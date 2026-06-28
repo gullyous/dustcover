@@ -45,7 +45,6 @@ def main():
     widget.repeat_clicked.connect(worker.cycle_repeat)
     # lifecycle
     widget.quit_requested.connect(app.quit)
-    app.aboutToQuit.connect(worker.stop)
 
     # optional TIDAL "favorite / add to collection" integration (heart button)
     liker = TidalLiker()
@@ -66,7 +65,14 @@ def main():
     hotkeys.show_hide.connect(widget._toggle_visibility)
     if config.HOTKEYS_ENABLED and hotkeys.available():
         hotkeys.start()
-    app.aboutToQuit.connect(hotkeys.stop)
+
+    # clean shutdown: stop + join the worker thread (closing its asyncio loop)
+    # and stop the hotkey listener before the app exits.
+    def _cleanup():
+        worker.stop()
+        worker.wait(2000)
+        hotkeys.stop()
+    app.aboutToQuit.connect(_cleanup)
 
     # settings dialog (from the tray menu)
     def open_settings():

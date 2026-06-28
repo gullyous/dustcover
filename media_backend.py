@@ -163,9 +163,10 @@ async def _snapshot(mgr, last_key):
         rate = pi.playback_rate
         info["rate"] = float(rate) if rate else 1.0
     except Exception:
-        for _k in ("can_playpause", "can_next", "can_prev",
-                   "can_seek", "can_shuffle", "can_repeat"):
-            info[_k] = True
+        # Be conservative on failure: keep basic transport, but do NOT claim
+        # seek/shuffle/repeat we couldn't confirm (avoids showing dead controls).
+        info["can_playpause"] = info["can_next"] = info["can_prev"] = True
+        info["can_seek"] = info["can_shuffle"] = info["can_repeat"] = False
         info["shuffle"], info["repeat"], info["rate"] = False, 0, 1.0
 
     key = (info["title"], info["artist"], info["album"])
@@ -263,42 +264,45 @@ class MediaWorker(QThread):
         self._stop = True
 
     def run(self):
-        asyncio.set_event_loop(asyncio.new_event_loop())
-        loop = asyncio.get_event_loop()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
-            mgr = loop.run_until_complete(MediaManager.request_async())
-        except Exception:
-            self.updated.emit({"available": False,
-                               "error": "Could not access Windows media controls."})
-            return
-
-        last_key = None
-        tick = 0
-        ticks_per_poll = max(1, int(config.POLL_MS / 100))
-
-        while not self._stop:
-            force = False
-            # 1) run any queued transport commands immediately
             try:
-                while True:
-                    cmd = self._cmds.get_nowait()
-                    loop.run_until_complete(_do_command(mgr, cmd))
-                    force = True
-            except queue.Empty:
-                pass
+                mgr = loop.run_until_complete(MediaManager.request_async())
+            except Exception:
+                self.updated.emit({"available": False,
+                                   "error": "Could not access Windows media controls."})
+                return
 
-            # 2) refresh now-playing every POLL_MS (or right after a command)
-            if force or tick % ticks_per_poll == 0:
+            last_key = None
+            tick = 0
+            ticks_per_poll = max(1, int(config.POLL_MS / 100))
+
+            while not self._stop:
+                force = False
+                # 1) run any queued transport commands immediately
                 try:
-                    info = loop.run_until_complete(_snapshot(mgr, last_key))
-                    if info.get("available"):
-                        last_key = info.get("_key", last_key)
-                    self.updated.emit(info)
-                except Exception:
+                    while True:
+                        cmd = self._cmds.get_nowait()
+                        loop.run_until_complete(_do_command(mgr, cmd))
+                        force = True
+                except queue.Empty:
                     pass
 
-            tick += 1
-            self.msleep(100)
+                # 2) refresh now-playing every POLL_MS (or right after a command)
+                if force or tick % ticks_per_poll == 0:
+                    try:
+                        info = loop.run_until_complete(_snapshot(mgr, last_key))
+                        if info.get("available"):
+                            last_key = info.get("_key", last_key)
+                        self.updated.emit(info)
+                    except Exception:
+                        pass
+
+                tick += 1
+                self.msleep(100)
+        finally:
+            loop.close()
 
 
 # --- standalone sanity check ----------------------------------------------

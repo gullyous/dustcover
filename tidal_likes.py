@@ -93,6 +93,7 @@ class TidalLiker(QObject):
                                  tok.get("refresh_token"))
             if s.check_login():
                 self._session = s
+                self._save_token(s)   # persist the access token if it was refreshed
         except Exception:
             self._session = None
 
@@ -139,24 +140,24 @@ class TidalLiker(QObject):
             args=(title, artist, album, currently_liked), daemon=True).start()
 
     def _toggle_worker(self, title, artist, album, currently_liked):
-        with self._lock:
-            if self._session is None:
-                self.like_result.emit(False, "login", "")
+        if self._session is None:
+            self.like_result.emit(False, "login", "")
+            return
+        label = f"{title}  ·  {artist}"
+        try:
+            tid = self._match(title, artist)   # network search, runs lock-free
+            if tid is None:
+                self.like_result.emit(False, "nomatch", label)
                 return
-            label = f"{title}  ·  {artist}"
-            try:
-                tid = self._match(title, artist)
-                if tid is None:
-                    self.like_result.emit(False, "nomatch", label)
-                    return
+            with self._lock:                   # serialize only the write
                 if currently_liked:
                     self._session.user.favorites.remove_track(tid)
-                    self.like_result.emit(True, "removed", label)
                 else:
                     self._session.user.favorites.add_track(tid)
-                    self.like_result.emit(True, "added", label)
-            except Exception:
-                self.like_result.emit(False, "error", label)
+            self.like_result.emit(True, "removed" if currently_liked else "added", label)
+            self._save_token(self._session)    # token may have refreshed
+        except Exception:
+            self.like_result.emit(False, "error", label)
 
     def _match_track(self, title, artist):
         nt, na = _norm(title), _norm(artist)
@@ -194,8 +195,7 @@ class TidalLiker(QObject):
             return
         label = ""
         try:
-            with self._lock:
-                t = self._match_track(title, artist)
+            t = self._match_track(title, artist)   # network search, runs lock-free
             if t is not None:
                 label = _quality_label(t)
         except Exception:

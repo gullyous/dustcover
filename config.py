@@ -38,3 +38,6 @@ ALWAYS_ON_TOP = True
 # Ctrl+Alt+Space play/pause, Ctrl+Alt+Left/Right prev/next, Ctrl+Alt+L like,
 # Ctrl+Alt+H show/hide.
 HOTKEYS_ENABLED = True
+
+# App version, shown in Settings -> About.
+APP_VERSION = "1.0.0"

@@ -61,7 +61,8 @@ def _fmt_time(secs: float) -> str:
     if not secs or secs < 0:
         return "--:--"
     secs = int(secs)
-    return f"{secs // 60}:{secs % 60:02d}"
+    h, m, s = secs // 3600, (secs % 3600) // 60, secs % 60
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
 def _rounded_cover(src: QPixmap, size: int, radius: int) -> QPixmap:

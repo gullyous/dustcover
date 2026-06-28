@@ -1,26 +1,86 @@
 """
 settings_dialog.py
 ------------------
-The preferences dialog (tray -> "Settings..."), organized into labelled
-sections. It only collects values; main.py applies and saves them so the live
-widget, hotkeys, and startup entry all update together.
+The preferences dialog (tray -> "Settings...") with two tabs:
+  * General  - Appearance / Behavior / Startup sections (collects values).
+  * About    - version, links, system info, and licenses.
+
+It only collects values; main.py applies and saves them so the live widget,
+hotkeys, and startup entry all update together.
 """
 
+import platform
+import sys
+
+from PySide6 import __version__ as PYSIDE_VERSION
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QCheckBox,
-    QSlider, QPushButton, QLabel, QColorDialog, QDialogButtonBox, QSpinBox,
+    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QTabWidget,
+    QWidget, QCheckBox, QSlider, QPushButton, QLabel, QColorDialog,
+    QDialogButtonBox, QSpinBox, QTextEdit,
 )
 
+import config
 import settings
+
+REPO = "https://github.com/gullyous/Tidal-Widget"
+
+_LICENSES = f"""TIDAL Now-Playing Widget v{config.APP_VERSION}
+Copyright (c) 2026 gullyous
+Released under the MIT License.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================
+Third-party components
+================================================================
+
+PySide6 (Qt for Python)
+    License: LGPL v3
+    https://www.qt.io/qt-for-python
+
+winsdk (Python WinRT projection)
+    License: MIT
+    https://github.com/pywinrt/python-winsdk
+
+tidalapi (unofficial TIDAL API client)
+    License: LGPL v3
+    https://github.com/tamland/python-tidal
+
+pynput (global hotkeys)
+    License: LGPL v3
+    https://github.com/moses-palmer/pynput
+
+================================================================
+This is an unofficial tool. It is not affiliated with, endorsed by, or
+sponsored by TIDAL or Aspiro AB. "TIDAL" is a trademark of its respective owner.
+"""
 
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Tidal Widget - Settings")
-        self.setMinimumWidth(360)
+        self.setMinimumWidth(380)
         self.setStyleSheet(
             "QGroupBox { font-weight:600; margin-top:10px;"
             " border:1px solid #5a5a62; border-radius:6px; padding:10px 8px 8px 8px; }"
@@ -28,7 +88,20 @@ class SettingsDialog(QDialog):
         cur = settings.current()
         self._accent = str(cur["accent"])
 
-        # ---- Appearance --------------------------------------------------
+        tabs = QTabWidget()
+        tabs.addTab(self._build_general_tab(cur), "General")
+        tabs.addTab(self._build_about_tab(), "About")
+
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+
+        col = QVBoxLayout(self)
+        col.addWidget(tabs)
+        col.addWidget(bb)
+
+    # ---- General tab -------------------------------------------------------
+    def _build_general_tab(self, cur):
         self.accent_btn = QPushButton()
         self.accent_btn.setCursor(Qt.PointingHandCursor)
         self.accent_btn.clicked.connect(self._pick_accent)
@@ -48,14 +121,12 @@ class SettingsDialog(QDialog):
         af.addRow("Panel opacity", self.bg)
         af.addRow("Whole-widget opacity", self.win)
 
-        # ---- Behavior ----------------------------------------------------
         self.aot = QCheckBox("Always on top")
         self.aot.setChecked(bool(cur["always_on_top"]))
         self.startexp = QCheckBox("Start in expanded view")
         self.startexp.setChecked(bool(cur["start_expanded"]))
         self.fallback = QCheckBox("Follow other apps when TIDAL isn't playing")
         self.fallback.setChecked(bool(cur["fallback_any"]))
-
         self.poll = QSpinBox()
         self.poll.setRange(200, 2000)
         self.poll.setSingleStep(100)
@@ -73,37 +144,96 @@ class SettingsDialog(QDialog):
         bl.addWidget(self.fallback)
         bl.addLayout(poll_row)
 
-        # ---- Startup & shortcuts ----------------------------------------
         self.startup = QCheckBox("Start the widget when Windows starts")
         self.startup.setChecked(settings.is_run_at_startup())
         self.hotkeys = QCheckBox("Enable global hotkeys")
         self.hotkeys.setChecked(bool(cur["hotkeys_enabled"]))
-        hint = QLabel(
+        hk_hint = QLabel(
             "Ctrl+Alt+Space play/pause   |   Ctrl+Alt+Left/Right prev/next\n"
             "Ctrl+Alt+L like   |   Ctrl+Alt+H show/hide")
-        hint.setStyleSheet("color:#9a9aa3; font-size:11px;")
+        hk_hint.setStyleSheet("color:#9a9aa3; font-size:11px;")
 
         startup = QGroupBox("Startup and shortcuts")
         sl = QVBoxLayout(startup)
         sl.addWidget(self.startup)
         sl.addWidget(self.hotkeys)
-        sl.addWidget(hint)
+        sl.addWidget(hk_hint)
 
-        # ---- assemble ----------------------------------------------------
         note = QLabel("Refresh interval and 'start expanded' take effect on next launch.")
         note.setStyleSheet("color:#7d7d86; font-size:10px;")
 
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        bb.accepted.connect(self.accept)
-        bb.rejected.connect(self.reject)
+        page = QWidget()
+        v = QVBoxLayout(page)
+        v.addWidget(appearance)
+        v.addWidget(behavior)
+        v.addWidget(startup)
+        v.addWidget(note)
+        v.addStretch(1)
+        return page
 
-        col = QVBoxLayout(self)
-        col.addWidget(appearance)
-        col.addWidget(behavior)
-        col.addWidget(startup)
-        col.addWidget(note)
-        col.addWidget(bb)
+    # ---- About tab --------------------------------------------------------
+    def _build_about_tab(self):
+        page = QWidget()
+        v = QVBoxLayout(page)
 
+        title = QLabel(
+            "<span style='font-size:15px; font-weight:700;'>TIDAL Now-Playing Widget</span>"
+            f"&nbsp;&nbsp;<span style='color:#9a9aa3;'>v{config.APP_VERSION}</span>")
+        desc = QLabel("A dark-glass desktop widget showing your current TIDAL track "
+                      "with transport controls, seek, favorites, and a quality badge.")
+        desc.setWordWrap(True)
+
+        made = QLabel(f'Made by <a href="https://github.com/gullyous">gullyous</a>')
+        made.setOpenExternalLinks(True)
+        links = QLabel(
+            f'<a href="{REPO}">Repository</a> &nbsp;&middot;&nbsp; '
+            f'<a href="{REPO}/releases/latest">Check for updates</a> &nbsp;&middot;&nbsp; '
+            f'<a href="{REPO}/issues/new">Report an issue</a>')
+        links.setOpenExternalLinks(True)
+        links.setTextFormat(Qt.RichText)
+
+        py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        sysinfo = QLabel(f"PySide6 {PYSIDE_VERSION}  |  Python {py}  |  "
+                         f"{platform.system()} {platform.release()}")
+        sysinfo.setStyleSheet("color:#7d7d86; font-size:10px;")
+
+        disclaimer = QLabel(
+            "Unofficial tool, not affiliated with, endorsed by, or sponsored by "
+            "TIDAL or Aspiro AB. \"TIDAL\" is a trademark of its respective owner.")
+        disclaimer.setWordWrap(True)
+        disclaimer.setStyleSheet("color:#7d7d86; font-size:10px;")
+
+        lic_btn = QPushButton("Licenses")
+        lic_btn.clicked.connect(self._show_licenses)
+
+        v.addWidget(title)
+        v.addWidget(desc)
+        v.addSpacing(6)
+        v.addWidget(made)
+        v.addWidget(links)
+        v.addSpacing(8)
+        v.addWidget(lic_btn, 0, Qt.AlignLeft)
+        v.addStretch(1)
+        v.addWidget(sysinfo)
+        v.addWidget(disclaimer)
+        return page
+
+    def _show_licenses(self):
+        d = QDialog(self)
+        d.setWindowTitle("Licenses")
+        d.resize(540, 480)
+        lay = QVBoxLayout(d)
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setPlainText(_LICENSES)
+        lay.addWidget(text)
+        bb = QDialogButtonBox(QDialogButtonBox.Close)
+        bb.rejected.connect(d.accept)
+        bb.accepted.connect(d.accept)
+        lay.addWidget(bb)
+        d.exec()
+
+    # ---- shared -----------------------------------------------------------
     def _pick_accent(self):
         c = QColorDialog.getColor(QColor(self._accent), self, "Accent color")
         if c.isValid():

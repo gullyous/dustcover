@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Settings now has an **About** tab: version, links (repository, updates, report
+  an issue), system info, and a Licenses viewer (app MIT + third-party).
+
+### Fixed
+- TIDAL login no longer silently expires: the OAuth token is re-saved after it
+  refreshes, so favorites/quality keep working across launches.
+- Clean shutdown: the SMTC worker thread is joined and its asyncio loop closed
+  on exit (no "QThread destroyed while running" / leaked loop).
+- Capability detection now fails closed: if controls can't be read, seek/
+  shuffle/repeat are treated as unsupported instead of shown.
+- Liking a track no longer blocks the quality lookup (the network search runs
+  without holding the favorites lock).
+- Track times over one hour now display as `H:MM:SS` instead of `62:00`.
+
 ## [1.0.0] - 2026-06-27
 
 First release.
