@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 gullyous
+
 """
 main.py
 -------
@@ -16,10 +19,15 @@ from hotkeys import HotkeyManager
 from media_backend import MediaWorker
 from settings_dialog import SettingsDialog
 from tidal_likes import TidalLiker
+from updater import Updater, maybe_run_helper, sweep_leftovers
 from widget import NowPlayingWidget
 
 
 def main():
+    # If we were re-launched as the self-update swap helper, do the swap and
+    # exit BEFORE creating any Qt objects.
+    if maybe_run_helper():
+        return
     app = QApplication(sys.argv)
     settings.load_into_config()   # apply any saved overrides before building the UI
     app.setApplicationName("Tidal Now Playing")
@@ -55,6 +63,81 @@ def main():
     liker.login_state.connect(widget.on_login_state)
     widget.quality_requested.connect(liker.quality)
     liker.quality_result.connect(widget.on_quality)
+    widget.on_login_state(liker.signed_in(), "")  # hide "Sign in" if already signed in
+
+    # in-app auto-update (GitHub releases). Network work runs on a background
+    # thread inside Updater; signals are delivered on the GUI thread.
+    sweep_leftovers()  # clean any .new/.old/.upd-* from a prior update
+    updater = Updater()
+
+    def _on_update_available(rel):
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QMessageBox, QProgressDialog
+        notes = (rel.get("body") or "").strip()
+        if len(notes) > 1200:
+            notes = notes[:1200] + "..."
+        box = QMessageBox(widget)
+        box.setWindowTitle("Update available")
+        box.setIcon(QMessageBox.Information)
+        box.setText(f"{rel.get('name') or rel.get('tag_name')} is available.\n"
+                    f"You have v{config.APP_VERSION}.")
+        if notes:
+            box.setInformativeText(notes)
+        b_now = box.addButton("Update now", QMessageBox.AcceptRole)
+        b_skip = box.addButton("Skip this version", QMessageBox.DestructiveRole)
+        box.addButton("Later", QMessageBox.RejectRole)
+        box.setDefaultButton(b_now)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is b_skip:
+            updater.skip_version(rel.get("tag_name"))
+            return
+        if clicked is not b_now:
+            return
+        # Download off the GUI thread so the widget never freezes; show a busy
+        # dialog and act on the result delivered via download_done.
+        progress = QProgressDialog("Downloading update...", "", 0, 0, widget)
+        progress.setWindowTitle("Updating")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+
+        def _done(status, msg):
+            try:
+                updater.download_done.disconnect(_done)
+            except (RuntimeError, TypeError):
+                pass
+            progress.close()
+            if status == "relaunching":
+                app.quit()  # release the exe lock so the helper can swap it
+            elif status == "source":
+                pass  # release page already opened in the browser
+            else:
+                QMessageBox.warning(widget, "Update failed",
+                                    msg or "The update could not be applied.")
+
+        updater.download_done.connect(_done)
+        progress.show()
+        updater.download_async(rel)
+
+    def _on_up_to_date(silent):
+        if silent:
+            return  # startup check stays quiet
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(widget, "No updates",
+                               f"You're up to date (v{config.APP_VERSION}).")
+
+    def _on_check_failed(msg, silent):
+        if silent:
+            return  # startup check stays quiet
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.warning(widget, "Update check failed", msg)
+
+    updater.update_available.connect(_on_update_available)
+    updater.up_to_date.connect(_on_up_to_date)
+    updater.check_failed.connect(_on_check_failed)
+    # Tray/right-click "Check for updates..." runs a loud check.
+    widget.check_updates_requested.connect(lambda: updater.check(silent=False))
 
     # global hotkeys (optional; needs pynput)
     hotkeys = HotkeyManager()
@@ -69,6 +152,7 @@ def main():
     # clean shutdown: stop + join the worker thread (closing its asyncio loop)
     # and stop the hotkey listener before the app exits.
     def _cleanup():
+        updater.stop()
         worker.stop()
         worker.wait(2000)
         hotkeys.stop()
@@ -90,6 +174,12 @@ def main():
 
     worker.start()
     widget.show()
+
+    # Silent startup check (only if enabled). A newer version pops the update
+    # dialog; up-to-date/errors stay quiet (no loud handlers connected here).
+    if config.CHECK_UPDATES:
+        updater.check(silent=True)
+
     sys.exit(app.exec())
 
 

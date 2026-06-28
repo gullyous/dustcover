@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 gullyous
+
 """
 settings.py
 -----------
@@ -29,6 +32,7 @@ FIELDS = {
     "fallback_any": ("FALLBACK_TO_ANY", bool),
     "poll_ms": ("POLL_MS", int),
     "hotkeys_enabled": ("HOTKEYS_ENABLED", bool),
+    "check_updates": ("CHECK_UPDATES", bool),
 }
 
 

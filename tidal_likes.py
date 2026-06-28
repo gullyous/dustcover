@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 gullyous
+
 """
 tidal_likes.py
 --------------
@@ -82,6 +85,10 @@ class TidalLiker(QObject):
             return self._session is not None and self._session.check_login()
         except Exception:
             return False
+
+    def signed_in(self):
+        """Cheap, non-network check: whether a TIDAL session is loaded."""
+        return self._session is not None
 
     # ---- auth --------------------------------------------------------------
     def _try_load_token(self):

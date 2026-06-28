@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 gullyous
+
 """
 settings_dialog.py
 ------------------
@@ -141,6 +144,8 @@ class SettingsDialog(QDialog):
         self.startup.setChecked(settings.is_run_at_startup())
         self.hotkeys = QCheckBox("Enable global hotkeys")
         self.hotkeys.setChecked(bool(cur["hotkeys_enabled"]))
+        self.check_updates = QCheckBox("Check for updates on startup")
+        self.check_updates.setChecked(bool(cur.get("check_updates", True)))
         hk_hint = QLabel(
             "Ctrl+Alt+Space play/pause   |   Ctrl+Alt+Left/Right prev/next\n"
             "Ctrl+Alt+L like   |   Ctrl+Alt+H show/hide")
@@ -149,6 +154,7 @@ class SettingsDialog(QDialog):
         startup = QGroupBox("Startup and shortcuts")
         sl = QVBoxLayout(startup)
         sl.addWidget(self.startup)
+        sl.addWidget(self.check_updates)
         sl.addWidget(self.hotkeys)
         sl.addWidget(hk_hint)
 
@@ -180,7 +186,7 @@ class SettingsDialog(QDialog):
         made.setOpenExternalLinks(True)
         links = QLabel(
             f'<a href="{REPO}">Repository</a> &nbsp;&middot;&nbsp; '
-            f'<a href="{REPO}/releases/latest">Check for updates</a> &nbsp;&middot;&nbsp; '
+            f'<a href="{REPO}/releases">Releases</a> &nbsp;&middot;&nbsp; '
             f'<a href="{REPO}/issues/new">Report an issue</a>')
         links.setOpenExternalLinks(True)
         links.setTextFormat(Qt.RichText)
@@ -189,6 +195,16 @@ class SettingsDialog(QDialog):
         sysinfo = QLabel(f"PySide6 {PYSIDE_VERSION}  |  Python {py}  |  "
                          f"{platform.system()} {platform.release()}")
         sysinfo.setStyleSheet("color:#7d7d86; font-size:10px;")
+
+        updates = QLabel(
+            "Updates: when enabled, this app checks GitHub once per launch for a "
+            "newer release. The check sends your app version and IP address to "
+            "GitHub. Updates download over HTTPS and are verified with a SHA-256 "
+            "checksum, then run only after you confirm. Current builds are not "
+            "code-signed, so Windows may warn about an unknown publisher. Turn "
+            "this off any time in Settings.")
+        updates.setWordWrap(True)
+        updates.setStyleSheet("color:#7d7d86; font-size:10px;")
 
         disclaimer = QLabel(
             "Unofficial tool, not affiliated with, endorsed by, or sponsored by "
@@ -208,6 +224,7 @@ class SettingsDialog(QDialog):
         v.addWidget(lic_btn, 0, Qt.AlignLeft)
         v.addStretch(1)
         v.addWidget(sysinfo)
+        v.addWidget(updates)
         v.addWidget(disclaimer)
         return page
 
@@ -248,5 +265,6 @@ class SettingsDialog(QDialog):
             "start_expanded": self.startexp.isChecked(),
             "fallback_any": self.fallback.isChecked(),
             "hotkeys_enabled": self.hotkeys.isChecked(),
+            "check_updates": self.check_updates.isChecked(),
             "run_at_startup": self.startup.isChecked(),
         }

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 gullyous
+
 """
 widget.py  -- the TIDAL now-playing widget UI.
 ==============================================
@@ -55,6 +58,11 @@ INK = "#ffffff"
 SUBTLE = "#a9a9b4"
 ON_ACCENT = "#06222a"   # icon color that reads on the cyan accent button
 LIKE_COLOR = "#ff4d6d"  # filled-heart color when a track is liked
+
+# Explains why a TIDAL sign-in exists at all: the now-playing display reads from
+# Windows (no account needed); sign-in only powers TIDAL-account actions.
+SIGNIN_HINT = ("Sign in to like tracks and show quality info from your TIDAL "
+               "account. The now-playing display works without signing in.")
 
 
 def _fmt_time(secs: float) -> str:
@@ -251,6 +259,7 @@ class NowPlayingWidget(QWidget):
     repeat_clicked = Signal()
     settings_requested = Signal()
     quality_requested = Signal(str, str)   # title, artist (request "available in" quality)
+    check_updates_requested = Signal()     # tray "Check for updates..." (loud check)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -272,6 +281,7 @@ class NowPlayingWidget(QWidget):
         self._cur_artist = ""
         self._cur_album = ""
         self._liked = False
+        self._logged_in = False   # signed in to TIDAL (for likes/quality)
         self._shuffle = False
         self._repeat = 0   # 0 none, 1 track, 2 list
 
@@ -497,6 +507,7 @@ class NowPlayingWidget(QWidget):
         self.tray.setToolTip("Tidal Now Playing")
 
         menu = QMenu()
+        menu.setToolTipsVisible(True)
         self._tray_menu = menu  # keep a reference so it isn't garbage-collected
 
         self.act_track = QAction("Nothing playing", self)
@@ -519,12 +530,18 @@ class NowPlayingWidget(QWidget):
                                 "Like current track", self)
         self.act_like.triggered.connect(self._on_heart)
         menu.addAction(self.act_like)
-        act_signin = QAction("Sign in to TIDAL", self)
-        act_signin.triggered.connect(lambda: self.signin_requested.emit())
-        menu.addAction(act_signin)
+        self.act_signin = QAction("Sign in to TIDAL", self)
+        self.act_signin.setToolTip(SIGNIN_HINT)
+        self.act_signin.triggered.connect(lambda: self.signin_requested.emit())
+        menu.addAction(self.act_signin)
         act_open = QAction("Open TIDAL", self)
         act_open.triggered.connect(self._open_tidal)
         menu.addAction(act_open)
+        menu.addSeparator()
+
+        act_check_updates = QAction("Check for updates...", self)
+        act_check_updates.triggered.connect(lambda: self.check_updates_requested.emit())
+        menu.addAction(act_check_updates)
         menu.addSeparator()
 
         self.act_visibility = QAction("Hide widget", self)
@@ -550,6 +567,7 @@ class NowPlayingWidget(QWidget):
     def _refresh_tray_menu(self):
         if not self.tray:
             return
+        self.act_signin.setVisible(not self._logged_in)
         self.act_visibility.setText("Hide widget" if self.isVisible() else "Show widget")
         self.act_mode.setText("Compact" if self._expanded else "Expand")
         self.act_play.setText("Pause" if self._playing else "Play")
@@ -594,9 +612,9 @@ class NowPlayingWidget(QWidget):
             b.setIcon(ic)
 
     def _tray_msg(self, text, title="Tidal Now Playing"):
-        if self.tray:
-            self.tray.showMessage(title, text,
-                                  QSystemTrayIcon.MessageIcon.Information, 4000)
+        # Desktop balloon notifications were intrusive; intentionally a no-op.
+        # Feedback comes from the widget itself (heart fill, menu state).
+        return
 
     def on_like_result(self, ok, action, label):
         if action == "login":
@@ -624,7 +642,9 @@ class NowPlayingWidget(QWidget):
         self._tray_msg("Opening TIDAL sign-in in your browser...", "TIDAL")
 
     def on_login_state(self, ok, msg):
-        self._tray_msg(msg, "TIDAL")
+        self._logged_in = bool(ok)
+        if self.tray:
+            self.act_signin.setVisible(not self._logged_in)
 
     def on_quality(self, title, artist, label):
         if (title, artist) != (self._cur_title, self._cur_artist):
@@ -853,27 +873,36 @@ class NowPlayingWidget(QWidget):
             e.accept()
 
     def contextMenuEvent(self, e):
-        # Right-clicking the widget shows the same full menu as the tray icon,
-        # so Settings, Open TIDAL, transport and the rest are all reachable
-        # directly from the widget (kept in sync via the tray menu's refresh).
-        if getattr(self, "_tray_menu", None) is not None:
-            self._tray_menu.popup(e.globalPos())
-            e.accept()
-            return
-        # Fallback when no system tray is available: build a minimal menu.
+        # The widget already shows transport + like as on-screen buttons, so the
+        # right-click menu carries only the management actions (no transport, to
+        # avoid duplicating the buttons). The tray icon keeps the FULL menu for
+        # when the widget is hidden.
         menu = QMenu(self)
-        toggle_act = QAction("Compact" if self._expanded else "Expand", self)
-        toggle_act.triggered.connect(self.toggle_mode)
-        menu.addAction(toggle_act)
+        menu.setToolTipsVisible(True)
+        act_open = QAction("Open TIDAL", self)
+        act_open.triggered.connect(self._open_tidal)
+        menu.addAction(act_open)
+        if not self._logged_in:
+            act_signin = QAction("Sign in to TIDAL", self)
+            act_signin.setToolTip(SIGNIN_HINT)
+            act_signin.triggered.connect(lambda: self.signin_requested.emit())
+            menu.addAction(act_signin)
+        act_updates = QAction("Check for updates...", self)
+        act_updates.triggered.connect(lambda: self.check_updates_requested.emit())
+        menu.addAction(act_updates)
         menu.addSeparator()
-        open_act = QAction("Open TIDAL", self)
-        open_act.triggered.connect(self._open_tidal)
-        menu.addAction(open_act)
-        settings_act = QAction("Settings...", self)
-        settings_act.triggered.connect(lambda: self.settings_requested.emit())
-        menu.addAction(settings_act)
+        act_mode = QAction("Compact" if self._expanded else "Expand", self)
+        act_mode.triggered.connect(self.toggle_mode)
+        menu.addAction(act_mode)
+        if self.tray:
+            act_hide = QAction("Hide widget", self)
+            act_hide.triggered.connect(self.hide)
+            menu.addAction(act_hide)
         menu.addSeparator()
-        quit_act = QAction("Quit", self)
-        quit_act.triggered.connect(self.quit_requested.emit)
-        menu.addAction(quit_act)
+        act_settings = QAction("Settings...", self)
+        act_settings.triggered.connect(lambda: self.settings_requested.emit())
+        menu.addAction(act_settings)
+        act_quit = QAction("Quit", self)
+        act_quit.triggered.connect(lambda: self.quit_requested.emit())
+        menu.addAction(act_quit)
         menu.exec(e.globalPos())

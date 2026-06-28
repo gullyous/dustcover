@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 gullyous
+
 # -------------------------------------------------------------------
 # Tidal Now-Playing Widget - user settings
 # Edit these values, then re-run the widget.
@@ -41,3 +44,9 @@ HOTKEYS_ENABLED = True
 
 # App version, shown in Settings -> About.
 APP_VERSION = "1.0.0"
+
+# Check GitHub for a newer release on startup (silent), and enable the tray
+# "Check for updates..." item. The check sends your app version and IP to
+# GitHub over HTTPS at most once per launch. Turn off to make zero update
+# network calls. (See README "Updates and privacy".)
+CHECK_UPDATES = True

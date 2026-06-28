@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 gullyous
+
 """Generate icon.ico + icon.png for the packaged app.
 
 Draws the brand mark "E" (three linked nodes with a live pulse ring on the

@@ -3,8 +3,9 @@
 A polished "dark glass" desktop widget for Windows that shows what's currently
 playing on **TIDAL** (cover art, title, artist) with transport controls, a
 compact/expanded view, and a system-tray menu. It reads playback straight from
-Windows, so there are no API keys, no login, and no configuration required to
-get going.
+Windows, so the now-playing display needs no API keys, no login, and no setup to
+get going. (Optional extras, favoriting tracks and the quality badge, use a
+one-time TIDAL sign-in.)
 
 ![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
@@ -32,7 +33,8 @@ get going.
 - Heart button to favorite the playing track to your TIDAL collection (optional, one-time sign-in)
 - Quality badge showing what the track is available in on TIDAL (MAX / Hi-Res / Lossless / High, plus Atmos)
 - Adaptive controls: actions the current source doesn't support are greyed out or hidden
-- Preferences dialog, run-at-Windows-startup, and optional global hotkeys
+- Preferences dialog (with an About + licenses tab), run-at-Windows-startup, and optional global hotkeys
+- Optional in-app update check: notified of new releases and updated with one click (HTTPS download, SHA-256 verified, can be turned off)
 - Frameless, always-on-top, and stays out of the taskbar
 - Drag to reposition; locks into the nearest screen corner on release
 - Ships as a single standalone `.exe`, no Python needed to run it
@@ -42,10 +44,11 @@ get going.
 The widget reads the active session from the Windows **System Media Transport
 Controls (SMTC)**, the same mechanism behind the volume-flyout media controls.
 Any app that integrates with SMTC publishes its now-playing metadata and accepts
-transport commands through it, including the TIDAL desktop app. That means no
-OAuth, no API keys, and it works the moment TIDAL is playing. If TIDAL is not
-running, it can optionally follow whatever else is playing (Spotify, a browser,
-and so on).
+transport commands through it, including the TIDAL desktop app. So the now-playing
+display needs no OAuth or API keys and works the moment TIDAL is playing. If TIDAL
+is not running, it can optionally follow whatever else is playing (Spotify, a
+browser, and so on). The optional heart/quality features are separate and do use a
+one-time TIDAL sign-in (see below).
 
 ## Requirements
 
@@ -58,7 +61,7 @@ and so on).
 ### Option A: Download the .exe (easiest)
 
 1. Download the latest `TidalNowPlaying.exe` from the
-   [Releases](https://github.com/gullyous/tidal-widget/releases/latest) page.
+   [Releases](https://github.com/gullyous/Tidal-Widget/releases/latest) page.
 2. Open TIDAL and play a track.
 3. Double-click the `.exe`. The first launch takes a few seconds while it unpacks.
 
@@ -89,11 +92,11 @@ The result is `dist\TidalNowPlaying.exe`.
 
 - **Move it:** drag anywhere on the card; on release it locks into the nearest screen corner.
 - **Resize:** double-click the card, or use the chevron in the top-right corner, to switch between compact and expanded.
-- **System tray:** left-click the tray icon to show or hide the widget; right-click for a menu with the current track, play/pause, next, previous, show/hide, expand/compact, and quit.
-- **Quick menu:** right-click the card for expand/compact, hide to tray, and quit.
+- **System tray:** left-click the tray icon to show or hide the widget; right-click for the full menu (current track, play/pause, next, previous, like, Open TIDAL, check for updates, show/hide, expand/compact, Settings, and quit).
+- **Right-click the widget:** the same management actions (Settings, Open TIDAL, check for updates, sign in, hide, expand/compact, quit), without the transport controls, since those are already buttons on the widget.
 - **Seek:** in expanded mode, drag the progress bar to jump to any point in the track.
 - **Shuffle / repeat:** toggle buttons appear in expanded mode when the player supports them. (TIDAL does not expose shuffle/repeat to Windows, so they stay hidden for TIDAL.)
-- **Settings:** right-click the tray icon and choose **Settings...** for accent, opacity, refresh interval, run-at-startup, and hotkeys.
+- **Settings:** right-click the tray icon (or the widget) and choose **Settings...** for accent, opacity, refresh interval, run-at-startup, hotkeys, and update checks. An **About** tab shows the version, links, and licenses.
 - **Global hotkeys** (when enabled): Ctrl+Alt+Space play/pause, Ctrl+Alt+Left/Right prev/next, Ctrl+Alt+L like, Ctrl+Alt+H show/hide.
 - **Heart (like):** click the heart to add the current track to your TIDAL collection. The first time, sign in once via the tray menu ("Sign in to TIDAL"). See below.
 
@@ -106,8 +109,8 @@ Windows media controls have no "favorite" command, this talks to TIDAL directly:
   A TIDAL page opens in your browser; approve it once. The login token is stored
   locally in `%APPDATA%\TidalWidget\` and refreshed automatically, so you never
   sign in again. Nothing is sent anywhere except to TIDAL.
-- **Click the heart** to add the playing track; click again to remove it. A tray
-  notification confirms what changed.
+- **Click the heart** to add the playing track; click again to remove it. The
+  heart fills in to show it's in your collection.
 - **Matching:** the now-playing track is matched to TIDAL's catalog by title and
   artist. If it cannot find a confident match it tells you rather than guessing.
 - This feature is **optional**: it needs the `tidalapi` package (bundled into the
@@ -122,7 +125,7 @@ needs the same sign-in and title/artist match as the heart.
 Important: this is **catalog availability, not the quality you are currently
 streaming**. Windows and TIDAL do not expose the live stream quality to other
 apps, and the actual streaming quality can only be changed inside TIDAL itself
-(tray menu -> "Open TIDAL (change quality)", then TIDAL > Settings > Streaming).
+(use "Open TIDAL" in the menu, then TIDAL > Settings > Streaming).
 
 ## Configuration
 
@@ -141,6 +144,7 @@ if you prefer.
 | `BACKGROUND_OPACITY` | `0.82` | Panel transparency (0.0 = clear, 1.0 = solid); text and controls stay opaque. |
 | `WINDOW_OPACITY` | `1.0` | Fade the entire widget, text included. Lower for a fully ghosted look. |
 | `HOTKEYS_ENABLED` | `True` | Enable system-wide global hotkeys (needs `pynput`). |
+| `CHECK_UPDATES` | `True` | Check GitHub for a newer release on startup, and enable the "Check for updates..." menu item. |
 
 ## Project structure
 
@@ -155,6 +159,7 @@ if you prefer.
 | `settings.py` | Persisted settings (QSettings) + run-at-startup management. |
 | `settings_dialog.py` | The preferences dialog. |
 | `hotkeys.py` | Optional global hotkeys (pynput). |
+| `updater.py` | Optional in-app update check + self-replace install (GitHub releases). |
 | `make_icon.py` | Generates `icon.ico` for the packaged app. |
 | `build.bat` | One-click build of the standalone `.exe`. |
 | `run.bat` / `run-debug.bat` | Run from source (with or without a console). |
@@ -166,6 +171,26 @@ if you prefer.
 - **Can't find the window:** by design it has no taskbar button. Use the tray icon (left-click to show), or it sits in the bottom-right corner by default.
 - **SmartScreen / antivirus warning:** expected for an unsigned PyInstaller binary. Use **More info -> Run anyway**, or build it yourself.
 - **Need logs:** run `run-debug.bat`, or `python media_backend.py` to print the current track and album-art byte count.
+
+## Updates and privacy
+
+The widget can check for new versions on startup. This is on by default and can
+be turned off in Settings (the "Check for updates on startup" option).
+
+When the check runs, it contacts GitHub's API for this repository
+(gullyous/Tidal-Widget) over HTTPS. This sends your app version and exposes your
+IP address to GitHub; no other data is collected or sent. The check runs at most
+once per launch.
+
+If an update is found, the new program is downloaded over HTTPS from this
+project's GitHub release and, when a `SHA256SUMS.txt` is published in the same
+release, its SHA-256 checksum is verified before anything runs. The checksum
+protects against corrupted or tampered downloads in transit; it does not by
+itself prove the release was published by the project owner. The app never
+installs silently: you are always prompted, and you can skip any version.
+
+Note: current builds are not code-signed, so Windows SmartScreen may show an
+"unknown publisher" warning. Authenticode signing is planned to address this.
 
 ## Tech and acknowledgements
 

@@ -6,16 +6,30 @@ to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **In-app updates.** The widget can check GitHub for new releases on startup
+  and via a tray "Check for updates..." item. When one is found you can update
+  with one click (Update now / Skip this version / Later); the download is over
+  HTTPS and verified with a SHA-256 checksum before it runs, then the app swaps
+  itself and restarts. Toggle "Check for updates on startup" in Settings; the
+  About tab and README document exactly what data the check sends.
 - Settings now has an **About** tab: version, links (repository, updates, report
-  an issue), system info, and a Licenses viewer (app MIT + third-party).
-- Right-clicking the widget now opens the full menu (Settings, Open TIDAL,
-  transport, like, show/hide), the same one as the tray icon.
+  an issue), system info, and a Licenses viewer (app license + third-party).
+- Right-clicking the widget opens a management menu (Settings, Open TIDAL, check
+  for updates, sign in, hide, expand/compact, quit). Transport stays on the
+  on-screen buttons; the tray icon keeps the full menu for when the widget is
+  hidden.
 
 ### Changed
+- "Sign in to TIDAL" now appears only when you are not signed in, with a tooltip
+  explaining it powers the optional likes and quality badge (the now-playing
+  display never needs it).
+- Removed the desktop balloon notifications (e.g. "Opening TIDAL"); feedback is
+  shown in the widget itself instead.
 - The "Open TIDAL" action is no longer labelled "change quality"; opening TIDAL
   is useful for switching playlists too.
-- Relicensed from MIT to the **GNU General Public License v3.0** (GPLv3).
-  Versions up to and including 1.0.0 remain available under the MIT License.
+- Relicensed from MIT to the **GNU General Public License v3.0** (GPLv3), with
+  SPDX headers across the source files. Versions up to and including 1.0.0 remain
+  available under the MIT License.
 
 ### Fixed
 - TIDAL login no longer silently expires: the OAuth token is re-saved after it
