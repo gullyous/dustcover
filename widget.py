@@ -490,6 +490,7 @@ class NowPlayingWidget(QWidget):
     # ---- system tray -------------------------------------------------------
     def _build_tray(self):
         self.tray = None
+        self._tray_menu = None
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
         self.tray = QSystemTrayIcon(icons.tray_icon(config.ACCENT), self)
@@ -521,7 +522,7 @@ class NowPlayingWidget(QWidget):
         act_signin = QAction("Sign in to TIDAL", self)
         act_signin.triggered.connect(lambda: self.signin_requested.emit())
         menu.addAction(act_signin)
-        act_open = QAction("Open TIDAL (change quality)", self)
+        act_open = QAction("Open TIDAL", self)
         act_open.triggered.connect(self._open_tidal)
         menu.addAction(act_open)
         menu.addSeparator()
@@ -643,8 +644,8 @@ class NowPlayingWidget(QWidget):
                 break
             except Exception:
                 continue
-        self._tray_msg("Opening TIDAL. Change streaming quality in "
-                       "TIDAL > Settings > Streaming.", "TIDAL")
+        self._tray_msg("Opening TIDAL. Change playlists or streaming quality "
+                       "in the TIDAL app.", "TIDAL")
 
     # ---- mode toggle -------------------------------------------------------
     def toggle_mode(self):
@@ -852,14 +853,25 @@ class NowPlayingWidget(QWidget):
             e.accept()
 
     def contextMenuEvent(self, e):
+        # Right-clicking the widget shows the same full menu as the tray icon,
+        # so Settings, Open TIDAL, transport and the rest are all reachable
+        # directly from the widget (kept in sync via the tray menu's refresh).
+        if getattr(self, "_tray_menu", None) is not None:
+            self._tray_menu.popup(e.globalPos())
+            e.accept()
+            return
+        # Fallback when no system tray is available: build a minimal menu.
         menu = QMenu(self)
         toggle_act = QAction("Compact" if self._expanded else "Expand", self)
         toggle_act.triggered.connect(self.toggle_mode)
         menu.addAction(toggle_act)
-        if self.tray:
-            hide_act = QAction("Hide to tray", self)
-            hide_act.triggered.connect(self.hide)
-            menu.addAction(hide_act)
+        menu.addSeparator()
+        open_act = QAction("Open TIDAL", self)
+        open_act.triggered.connect(self._open_tidal)
+        menu.addAction(open_act)
+        settings_act = QAction("Settings...", self)
+        settings_act.triggered.connect(lambda: self.settings_requested.emit())
+        menu.addAction(settings_act)
         menu.addSeparator()
         quit_act = QAction("Quit", self)
         quit_act.triggered.connect(self.quit_requested.emit)

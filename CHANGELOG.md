@@ -8,6 +8,12 @@ to [Semantic Versioning](https://semver.org/).
 ### Added
 - Settings now has an **About** tab: version, links (repository, updates, report
   an issue), system info, and a Licenses viewer (app MIT + third-party).
+- Right-clicking the widget now opens the full menu (Settings, Open TIDAL,
+  transport, like, show/hide), the same one as the tray icon.
+
+### Changed
+- The "Open TIDAL" action is no longer labelled "change quality"; opening TIDAL
+  is useful for switching playlists too.
 
 ### Fixed
 - TIDAL login no longer silently expires: the OAuth token is re-saved after it
