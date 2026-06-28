@@ -45,8 +45,30 @@ jobs:
           name: TidalNowPlaying
           path: dist/TidalNowPlaying.exe
 
-      - name: Attach to release
+      - name: Publish release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          name: TIDAL Now-Playing Widget ${{ github.ref_name }}
           files: dist/TidalNowPlaying.exe
+          generate_release_notes: true
+          append_body: true
+          body: |
+            A dark-glass desktop widget for Windows that shows your current
+            **TIDAL** track with transport controls, seek, a system-tray icon,
+            optional TIDAL favorites, and an "available in" quality badge.
+
+            ### Download
+            Grab **`TidalNowPlaying.exe`** below and double-click it (open TIDAL
+            and play a track first). No install and no Python needed; the first
+            launch takes a few seconds to unpack. The app is unsigned, so Windows
+            SmartScreen may warn the first time, choose **More info -> Run anyway**.
+
+            ### Highlights
+            - Live cover, title, artist; compact and expanded views
+            - Play / pause, next / prev, seekable progress bar
+            - Blurred album-art background, configurable transparency and accent
+            - System-tray controls, global hotkeys, run-at-startup
+            - Drag-to-reposition that locks into the nearest screen corner
+            - Optional: favorite the current track to your TIDAL collection, plus
+              a badge for the best quality it is available in (MAX / Hi-Res / Lossless)
