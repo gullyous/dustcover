@@ -21,3 +21,6 @@ icons/
 
 # Local app/editor settings (machine-specific)
 .claude/
+
+# Cloud-sync (Proton Drive, OneDrive, etc.) conflict artifacts
+*Name clash*
