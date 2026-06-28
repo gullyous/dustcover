@@ -491,7 +491,7 @@ class NowPlayingWidget(QWidget):
         self.tray = None
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
-        self.tray = QSystemTrayIcon(icons.app_icon(config.ACCENT), self)
+        self.tray = QSystemTrayIcon(icons.tray_icon(config.ACCENT), self)
         self.tray.setToolTip("Tidal Now Playing")
 
         menu = QMenu()

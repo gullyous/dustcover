@@ -279,15 +279,57 @@ def repeat_icon(color="#ffffff", size=64, one=False):
 
 
 def app_icon(accent="#39d6e0", size=64):
-    """Multi-resolution QIcon for the tray + window icon. `size` is kept for
-    backwards-compatibility but the icon now carries every standard size so it
-    stays crisp in the tray, taskbar and alt-tab."""
+    """Multi-resolution QIcon for the window / .exe icon. `size` is kept for
+    backwards-compatibility but the icon carries every standard size so it stays
+    crisp in the taskbar, alt-tab and Explorer."""
     icon = QIcon()
     for s in (16, 24, 32, 48, 64, 128, 256):
         pm = QPixmap(s, s)
         pm.fill(Qt.transparent)
         p = QPainter(pm)
         draw_app_icon(p, s, accent)
+        p.end()
+        icon.addPixmap(pm)
+    return icon
+
+
+def _draw_mark(p, size, accent, fill=0.92):
+    """Paint just the brand mark (no tile) scaled to fill the canvas, so it reads
+    as large as possible in the system tray on a dark taskbar."""
+    p.setRenderHint(QPainter.Antialiasing, True)
+    # mark bounding box in the 100x100 design space is ~58 wide, centred at (50,53)
+    sc = fill * size / 58.0
+
+    def MX(v):
+        return size / 2 + (v - 50) * sc
+
+    def MY(v):
+        return size / 2 + (v - 53) * sc
+
+    ac = QColor(accent)
+    pen = QPen(ac)
+    pen.setWidthF(max(1.2, 6.5 * sc))
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    p.setPen(pen)
+    p.drawLine(QPointF(MX(28), MY(42)), QPointF(MX(72), MY(42)))
+    p.drawLine(QPointF(MX(50), MY(42)), QPointF(MX(50), MY(66)))
+    p.setPen(Qt.NoPen)
+    p.setBrush(ac)
+    for vx, vy in ((28, 42), (72, 42), (50, 66)):
+        p.drawEllipse(QPointF(MX(vx), MY(vy)), 7.5 * sc, 7.5 * sc)
+    p.drawEllipse(QPointF(MX(50), MY(42)), 10 * sc, 10 * sc)
+
+
+def tray_icon(accent="#39d6e0", size=64):
+    """Multi-resolution QIcon for the system tray: the mark fills the icon (no
+    dark tile) so it doesn't look tiny against the dark taskbar."""
+    icon = QIcon()
+    for s in (16, 20, 24, 32, 48, 64):
+        pm = QPixmap(s, s)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        _draw_mark(p, s, accent)
         p.end()
         icon.addPixmap(pm)
     return icon
