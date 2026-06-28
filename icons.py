@@ -111,3 +111,21 @@ def expand_icon(color="#ffffff", size=64):
 
 def collapse_icon(color="#ffffff", size=64):
     return _chevron(color, size, up=False)
+
+
+def app_icon(accent="#39d6e0", size=64):
+    """Dark-glass app tile with an accent play glyph (tray / window icon)."""
+    pm, p = _canvas(size)
+    r = QRectF(size * 0.08, size * 0.08, size * 0.84, size * 0.84)
+    rad = size * 0.24
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor("#101014"))
+    p.drawRoundedRect(r, rad, rad)
+    pen = QPen(QColor(accent))
+    pen.setWidthF(size * 0.05)
+    p.setPen(pen)
+    p.setBrush(Qt.NoBrush)
+    p.drawRoundedRect(r, rad, rad)
+    _tri_right(p, accent, size * 0.40, size * 0.70, size * 0.5, size * 0.17)
+    p.end()
+    return QIcon(pm)

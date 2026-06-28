@@ -1,0 +1,9 @@
+# Normalize line endings: text files stored as LF in the repo.
+* text=auto
+
+# Windows batch files must stay CRLF to run correctly.
+*.bat text eol=crlf
+
+# Treat these as binary (no EOL conversion, no diff).
+*.png binary
+*.ico binary

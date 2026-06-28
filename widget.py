@@ -34,7 +34,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QWidget, QLabel, QPushButton, QFrame, QStackedWidget, QSizePolicy,
-    QHBoxLayout, QVBoxLayout, QMenu, QGraphicsDropShadowEffect,
+    QHBoxLayout, QVBoxLayout, QMenu, QSystemTrayIcon, QGraphicsDropShadowEffect,
 )
 
 import config
@@ -220,6 +220,7 @@ class NowPlayingWidget(QWidget):
 
         self._build_ui()
         self._apply_style()
+        self._build_tray()
 
         self._set_mode(self._expanded, anchor=False)
         self._move_to_corner()
@@ -377,6 +378,85 @@ class NowPlayingWidget(QWidget):
         for b in self.findChildren(QPushButton):
             b.setStyleSheet(f"border-radius:{b.width() // 2}px;")
 
+    # ---- system tray -------------------------------------------------------
+    def _build_tray(self):
+        self.tray = None
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        self.tray = QSystemTrayIcon(icons.app_icon(config.ACCENT), self)
+        self.tray.setToolTip("Tidal Now Playing")
+
+        menu = QMenu()
+        self._tray_menu = menu  # keep a reference so it isn't garbage-collected
+
+        self.act_track = QAction("Nothing playing", self)
+        self.act_track.setEnabled(False)
+        menu.addAction(self.act_track)
+        menu.addSeparator()
+
+        self.act_play = QAction(icons.play_icon(INK), "Play", self)
+        self.act_play.triggered.connect(lambda: self.playpause_clicked.emit())
+        menu.addAction(self.act_play)
+        act_next = QAction(icons.next_icon(INK), "Next", self)
+        act_next.triggered.connect(lambda: self.next_clicked.emit())
+        menu.addAction(act_next)
+        act_prev = QAction(icons.prev_icon(INK), "Previous", self)
+        act_prev.triggered.connect(lambda: self.prev_clicked.emit())
+        menu.addAction(act_prev)
+        menu.addSeparator()
+
+        self.act_visibility = QAction("Hide widget", self)
+        self.act_visibility.triggered.connect(self._toggle_visibility)
+        menu.addAction(self.act_visibility)
+        self.act_mode = QAction("Expand", self)
+        self.act_mode.triggered.connect(self.toggle_mode)
+        menu.addAction(self.act_mode)
+        menu.addSeparator()
+
+        act_quit = QAction("Quit", self)
+        act_quit.triggered.connect(lambda: self.quit_requested.emit())
+        menu.addAction(act_quit)
+
+        menu.aboutToShow.connect(self._refresh_tray_menu)
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(self._tray_activated)
+        self.tray.show()
+
+    def _refresh_tray_menu(self):
+        if not self.tray:
+            return
+        self.act_visibility.setText("Hide widget" if self.isVisible() else "Show widget")
+        self.act_mode.setText("Compact" if self._expanded else "Expand")
+        self.act_play.setText("Pause" if self._playing else "Play")
+        self.act_play.setIcon(icons.pause_icon(INK) if self._playing
+                              else icons.play_icon(INK))
+
+    def _tray_activated(self, reason):
+        # left-click toggles the widget; right-click opens the context menu
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self._toggle_visibility()
+
+    def _toggle_visibility(self):
+        if self.isVisible():
+            self.hide()
+        else:
+            self._show_widget()
+
+    def _show_widget(self):
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def _update_tray(self, title, artist, available):
+        if not self.tray:
+            return
+        if available:
+            self.act_track.setText(f"{title}  ·  {artist}")
+            self.tray.setToolTip(f"{title}\n{artist}")
+        else:
+            self.act_track.setText("Nothing playing")
+            self.tray.setToolTip("Tidal Now Playing")
+
     # ---- mode toggle -------------------------------------------------------
     def toggle_mode(self):
         self._set_mode(not self._expanded)
@@ -421,6 +501,7 @@ class NowPlayingWidget(QWidget):
             self.progress.set_fraction(0.0)
             self.e_pos.setText("--:--")
             self.e_dur.setText("--:--")
+            self._update_tray(None, None, available=False)
             return
 
         title = info.get("title") or "Unknown title"
@@ -432,6 +513,7 @@ class NowPlayingWidget(QWidget):
 
         self._playing = bool(info.get("playing"))
         self._set_play_icon(self._playing)
+        self._update_tray(title, artist, available=True)
 
         self._pos = float(info.get("position") or 0.0)
         self._dur = float(info.get("duration") or 0.0)
@@ -514,6 +596,10 @@ class NowPlayingWidget(QWidget):
         toggle_act = QAction("Compact" if self._expanded else "Expand", self)
         toggle_act.triggered.connect(self.toggle_mode)
         menu.addAction(toggle_act)
+        if self.tray:
+            hide_act = QAction("Hide to tray", self)
+            hide_act.triggered.connect(self.hide)
+            menu.addAction(hide_act)
         menu.addSeparator()
         quit_act = QAction("Quit", self)
         quit_act.triggered.connect(self.quit_requested.emit)

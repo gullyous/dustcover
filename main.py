@@ -16,7 +16,9 @@ from widget import NowPlayingWidget
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Tidal Now Playing")
-    app.setQuitOnLastWindowClosed(True)
+    # The widget can be hidden to the system tray, so don't quit just because
+    # no window is visible; quitting happens explicitly via the tray/menu.
+    app.setQuitOnLastWindowClosed(False)
 
     widget = NowPlayingWidget()
     worker = MediaWorker()
