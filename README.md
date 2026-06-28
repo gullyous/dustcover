@@ -3,9 +3,9 @@
 A polished "dark glass" desktop widget for Windows that shows what's currently
 playing on **TIDAL** (cover art, title, artist) with transport controls, a
 compact/expanded view, and a system-tray menu. It reads playback straight from
-Windows, so the now-playing display needs no API keys, no login, and no setup to
-get going. (Optional extras, favoriting tracks and the quality badge, use a
-one-time TIDAL sign-in.)
+Windows media controls, so seeing what's playing works the moment TIDAL plays,
+no API keys and no setup. Signing in is only needed for the optional extras
+(liking tracks and the quality badge).
 
 ![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
