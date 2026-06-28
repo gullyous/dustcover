@@ -4,8 +4,9 @@
 """
 settings_dialog.py
 ------------------
-The preferences dialog (tray -> "Settings...") with two tabs:
+The preferences dialog (tray -> "Settings...") with three tabs:
   * General  - Appearance / Behavior / Startup sections (collects values).
+  * Updates  - the update toggle, a manual check, and release notes.
   * About    - version, links, system info, and licenses.
 
 It only collects values; main.py applies and saves them so the live widget,
@@ -72,8 +73,45 @@ sponsored by TIDAL or Aspiro AB. "TIDAL" is a trademark of its respective owner.
 """
 
 
+RELEASE_NOTES = """Latest changes (this build)
+
+Added
+  - In-app updates: checks GitHub on startup and from the button above; one-click
+    install, verified over HTTPS with a SHA-256 checksum, then restarts.
+  - Right-click the widget for a management menu (Settings, Open TIDAL, updates).
+  - About tab with version, links, and full license info.
+
+Changed
+  - "Sign in to TIDAL" appears only when you are signed out, with a tooltip
+    explaining it powers the optional likes and quality badge.
+  - Removed the desktop balloon notifications; feedback is shown in the widget.
+  - "Open TIDAL" is no longer labelled "change quality" (use it for playlists too).
+  - Relicensed from MIT to the GNU General Public License v3.0 (GPLv3).
+
+Fixed
+  - TIDAL sign-in no longer silently expires (the token is refreshed and re-saved).
+  - Cleaner shutdown; no leaked background worker.
+  - Seek / shuffle / repeat show only when the player really supports them.
+  - Liking a track no longer blocks the quality lookup.
+  - Track times over an hour show as H:MM:SS instead of 62:00.
+
+
+v1.0.0
+
+  - First release: dark-glass TIDAL now-playing widget, reading from the Windows
+    media controls (SMTC).
+  - Live cover art, title, artist; compact and expanded views.
+  - Play / pause, next / previous, seekable progress bar.
+  - Blurred album-art background; configurable transparency and accent color.
+  - System-tray controls, global hotkeys, run-at-Windows-startup.
+  - Drag to reposition; snaps to the nearest screen corner.
+  - Optional: favorite the current track to TIDAL, plus a quality badge
+    (MAX / Hi-Res / Lossless / High, with Atmos).
+"""
+
+
 class SettingsDialog(QDialog):
-    check_updates_clicked = Signal()   # About tab "Check for updates" button
+    check_updates_clicked = Signal()   # Updates tab "Check for updates" button
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -88,6 +126,7 @@ class SettingsDialog(QDialog):
 
         tabs = QTabWidget()
         tabs.addTab(self._build_general_tab(cur), "General")
+        tabs.addTab(self._build_updates_tab(cur), "Updates")
         tabs.addTab(self._build_about_tab(), "About")
 
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -146,8 +185,6 @@ class SettingsDialog(QDialog):
         self.startup.setChecked(settings.is_run_at_startup())
         self.hotkeys = QCheckBox("Enable global hotkeys")
         self.hotkeys.setChecked(bool(cur["hotkeys_enabled"]))
-        self.check_updates = QCheckBox("Check for updates on startup")
-        self.check_updates.setChecked(bool(cur.get("check_updates", True)))
         hk_hint = QLabel(
             "Ctrl+Alt+Space play/pause   |   Ctrl+Alt+Left/Right prev/next\n"
             "Ctrl+Alt+L like   |   Ctrl+Alt+H show/hide")
@@ -156,7 +193,6 @@ class SettingsDialog(QDialog):
         startup = QGroupBox("Startup and shortcuts")
         sl = QVBoxLayout(startup)
         sl.addWidget(self.startup)
-        sl.addWidget(self.check_updates)
         sl.addWidget(self.hotkeys)
         sl.addWidget(hk_hint)
 
@@ -170,6 +206,38 @@ class SettingsDialog(QDialog):
         v.addWidget(startup)
         v.addWidget(note)
         v.addStretch(1)
+        return page
+
+    # ---- Updates tab -------------------------------------------------------
+    def _build_updates_tab(self, cur):
+        page = QWidget()
+        v = QVBoxLayout(page)
+
+        self.check_updates = QCheckBox("Check for updates on startup")
+        self.check_updates.setChecked(bool(cur.get("check_updates", True)))
+        v.addWidget(self.check_updates)
+
+        check_btn = QPushButton("Check for updates now")
+        check_btn.clicked.connect(lambda: self.check_updates_clicked.emit())
+        v.addWidget(check_btn, 0, Qt.AlignLeft)
+
+        privacy = QLabel(
+            "The check contacts GitHub over HTTPS and sends your app version and "
+            "IP address. An update downloads over HTTPS, is verified with a "
+            "SHA-256 checksum, and runs only after you confirm. Current builds "
+            "are not code-signed, so Windows may warn about an unknown publisher.")
+        privacy.setWordWrap(True)
+        privacy.setStyleSheet("color:#7d7d86; font-size:10px;")
+        v.addWidget(privacy)
+
+        notes_label = QLabel("Release notes")
+        notes_label.setStyleSheet("font-weight:600; margin-top:8px;")
+        v.addWidget(notes_label)
+
+        notes = QTextEdit()
+        notes.setReadOnly(True)
+        notes.setPlainText(RELEASE_NOTES)
+        v.addWidget(notes, 1)
         return page
 
     # ---- About tab --------------------------------------------------------
@@ -198,30 +266,14 @@ class SettingsDialog(QDialog):
                          f"{platform.system()} {platform.release()}")
         sysinfo.setStyleSheet("color:#7d7d86; font-size:10px;")
 
-        updates = QLabel(
-            "Updates: when enabled, this app checks GitHub once per launch for a "
-            "newer release. The check sends your app version and IP address to "
-            "GitHub. Updates download over HTTPS and are verified with a SHA-256 "
-            "checksum, then run only after you confirm. Current builds are not "
-            "code-signed, so Windows may warn about an unknown publisher. Turn "
-            "this off any time in Settings.")
-        updates.setWordWrap(True)
-        updates.setStyleSheet("color:#7d7d86; font-size:10px;")
-
         disclaimer = QLabel(
             "Unofficial tool, not affiliated with, endorsed by, or sponsored by "
             "TIDAL or Aspiro AB. \"TIDAL\" is a trademark of its respective owner.")
         disclaimer.setWordWrap(True)
         disclaimer.setStyleSheet("color:#7d7d86; font-size:10px;")
 
-        upd_btn = QPushButton("Check for updates")
-        upd_btn.clicked.connect(lambda: self.check_updates_clicked.emit())
         lic_btn = QPushButton("Licenses")
         lic_btn.clicked.connect(self._show_licenses)
-        btn_row = QHBoxLayout()
-        btn_row.addWidget(upd_btn)
-        btn_row.addWidget(lic_btn)
-        btn_row.addStretch(1)
 
         v.addWidget(title)
         v.addWidget(desc)
@@ -229,10 +281,9 @@ class SettingsDialog(QDialog):
         v.addWidget(made)
         v.addWidget(links)
         v.addSpacing(8)
-        v.addLayout(btn_row)
+        v.addWidget(lic_btn, 0, Qt.AlignLeft)
         v.addStretch(1)
         v.addWidget(sysinfo)
-        v.addWidget(updates)
         v.addWidget(disclaimer)
         return page
 
