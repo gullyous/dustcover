@@ -161,6 +161,7 @@ def main():
     # settings dialog (from the tray menu)
     def open_settings():
         dlg = SettingsDialog(widget)
+        dlg.check_updates_clicked.connect(lambda: updater.check(silent=False))
         if dlg.exec():
             v = dlg.values()
             settings.save({k: val for k, val in v.items() if k != "run_at_startup"})

@@ -16,7 +16,7 @@ import platform
 import sys
 
 from PySide6 import __version__ as PYSIDE_VERSION
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QTabWidget,
@@ -73,6 +73,8 @@ sponsored by TIDAL or Aspiro AB. "TIDAL" is a trademark of its respective owner.
 
 
 class SettingsDialog(QDialog):
+    check_updates_clicked = Signal()   # About tab "Check for updates" button
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Tidal Widget - Settings")
@@ -212,8 +214,14 @@ class SettingsDialog(QDialog):
         disclaimer.setWordWrap(True)
         disclaimer.setStyleSheet("color:#7d7d86; font-size:10px;")
 
+        upd_btn = QPushButton("Check for updates")
+        upd_btn.clicked.connect(lambda: self.check_updates_clicked.emit())
         lic_btn = QPushButton("Licenses")
         lic_btn.clicked.connect(self._show_licenses)
+        btn_row = QHBoxLayout()
+        btn_row.addWidget(upd_btn)
+        btn_row.addWidget(lic_btn)
+        btn_row.addStretch(1)
 
         v.addWidget(title)
         v.addWidget(desc)
@@ -221,7 +229,7 @@ class SettingsDialog(QDialog):
         v.addWidget(made)
         v.addWidget(links)
         v.addSpacing(8)
-        v.addWidget(lic_btn, 0, Qt.AlignLeft)
+        v.addLayout(btn_row)
         v.addStretch(1)
         v.addWidget(sysinfo)
         v.addWidget(updates)

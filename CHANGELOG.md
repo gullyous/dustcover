@@ -12,8 +12,9 @@ to [Semantic Versioning](https://semver.org/).
   HTTPS and verified with a SHA-256 checksum before it runs, then the app swaps
   itself and restarts. Toggle "Check for updates on startup" in Settings; the
   About tab and README document exactly what data the check sends.
-- Settings now has an **About** tab: version, links (repository, updates, report
-  an issue), system info, and a Licenses viewer (app license + third-party).
+- Settings now has an **About** tab: version, links (repository, releases, report
+  an issue), system info, a Licenses viewer (app license + third-party), and a
+  **Check for updates** button.
 - Right-clicking the widget opens a management menu (Settings, Open TIDAL, check
   for updates, sign in, hide, expand/compact, quit). Transport stays on the
   on-screen buttons; the tray icon keeps the full menu for when the widget is
