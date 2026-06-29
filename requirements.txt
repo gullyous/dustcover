@@ -15,3 +15,7 @@ tidalapi>=0.8.0
 # Optional: system-wide global hotkeys. The widget runs fine without it
 # (hotkeys are simply unavailable).
 pynput>=1.7.6
+
+# Optional: per-app volume control via the Windows Core Audio APIs. Pulls in
+# comtypes + psutil. Without it, the volume slider is simply hidden.
+pycaw>=20240210

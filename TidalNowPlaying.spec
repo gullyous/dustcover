@@ -4,11 +4,14 @@ from PyInstaller.utils.hooks import collect_all
 datas = []
 binaries = []
 hiddenimports = []
-for _pkg in ('winsdk', 'tidalapi', 'pynput'):
-    _d, _b, _h = collect_all(_pkg)
-    datas += _d
-    binaries += _b
-    hiddenimports += _h
+for _pkg in ('winsdk', 'tidalapi', 'pynput', 'pycaw', 'comtypes', 'psutil'):
+    try:
+        _d, _b, _h = collect_all(_pkg)
+        datas += _d
+        binaries += _b
+        hiddenimports += _h
+    except Exception:
+        pass  # optional dependency not installed; skip
 
 # The app only uses QtCore / QtGui / QtWidgets. Exclude the heavy Qt modules
 # PyInstaller would otherwise bundle (QtWebEngineCore alone is ~195 MB), plus
