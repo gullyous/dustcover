@@ -35,7 +35,7 @@ excludes = [
     'PySide6.QtTextToSpeech', 'PySide6.QtRemoteObjects',
     'PySide6.QtScxml', 'PySide6.QtStateMachine',
     'PySide6.QtNetworkAuth', 'PySide6.QtHttpServer',
-    'tkinter', 'setuptools', 'pip', 'distutils',
+    'tkinter',
     'numpy', 'PIL', 'pandas', 'matplotlib', 'scipy', 'pytest', 'IPython',
 ]
 
