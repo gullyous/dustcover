@@ -367,12 +367,25 @@ class NowPlayingWidget(QWidget):
                                       self.playpause_clicked.emit, 36, accent=True)
         self.c_next = self._round_btn(icons.next_icon(INK), self.next_clicked.emit, 30)
 
-        controls = QHBoxLayout()
-        controls.setSpacing(6)
-        controls.addWidget(self.c_like)
-        controls.addWidget(self.c_prev)
-        controls.addWidget(self.c_play)
-        controls.addWidget(self.c_next)
+        btns = QHBoxLayout()
+        btns.setSpacing(6)
+        btns.addWidget(self.c_like)
+        btns.addWidget(self.c_prev)
+        btns.addWidget(self.c_play)
+        btns.addWidget(self.c_next)
+
+        # tiny volume slider under the compact controls, for a quick adjust
+        self.c_vol = QSlider(Qt.Horizontal)
+        self.c_vol.setRange(0, 100)
+        self.c_vol.setFixedHeight(14)
+        self.c_vol.setCursor(Qt.PointingHandCursor)
+        self.c_vol.valueChanged.connect(self._on_vol_changed)
+        self.c_vol.hide()   # shown only when a controllable session is found
+
+        controls = QVBoxLayout()
+        controls.setSpacing(4)
+        controls.addLayout(btns)
+        controls.addWidget(self.c_vol)
 
         row = QHBoxLayout(page)
         row.setContentsMargins(14, 14, 14, 14)
@@ -497,17 +510,22 @@ class NowPlayingWidget(QWidget):
         self.mute_toggled.emit(not self._muted)
 
     def on_volume_state(self, level, muted, scope):
-        # level < 0 or empty scope -> nothing controllable; hide the row.
+        # level < 0 or empty scope -> nothing controllable; hide the controls.
         if level < 0 or not scope:
             self.e_vol_box.hide()
+            self.c_vol.hide()
             return
         self.e_vol_box.show()
+        self.c_vol.show()
         self._muted = bool(muted)
         self.e_mute.setIcon(icons.volume_icon(INK, muted=self._muted))
         self.e_mute.setToolTip(("Unmute " if self._muted else "Mute ") + scope)
         self.e_vol.setToolTip(f"Volume: {scope}")
+        self.c_vol.setToolTip(f"Volume: {scope}")
         self._vol_updating = True
-        self.e_vol.setValue(int(round(max(0.0, min(1.0, level)) * 100)))
+        v = int(round(max(0.0, min(1.0, level)) * 100))
+        self.e_vol.setValue(v)
+        self.c_vol.setValue(v)
         self._vol_updating = False
 
     def _apply_style(self):

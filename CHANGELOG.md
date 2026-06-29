@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- A tiny volume slider under the compact controls, for quick volume changes
+  without expanding the widget.
+
 ## [1.1.0] - 2026-06-29
 
 ### Added
