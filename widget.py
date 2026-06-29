@@ -307,7 +307,7 @@ class NowPlayingWidget(QWidget):
         self._timer = QTimer(self)
         self._timer.setInterval(200)
         self._timer.timeout.connect(self._tick_progress)
-        self._timer.start()
+        # started on demand by _update_timer() (only while playing + expanded + visible)
 
     # ---- UI construction ---------------------------------------------------
     def _build_ui(self):
@@ -718,6 +718,7 @@ class NowPlayingWidget(QWidget):
 
         self.stack.setCurrentIndex(1 if expanded else 0)
         self.setFixedSize(new_w, new_h)
+        self._update_timer()
 
         # place the floating toggle button in the card's top-right corner
         self.toggle_btn.setIcon(
@@ -744,6 +745,7 @@ class NowPlayingWidget(QWidget):
             self.c_artist.setFullText(msg)
             self.e_artist.setFullText(msg)
             self._playing = False
+            self._update_timer()
             self._set_play_icon(False)
             self._pos = self._dur = 0.0
             self.progress.set_fraction(0.0)
@@ -777,6 +779,7 @@ class NowPlayingWidget(QWidget):
 
         self._playing = bool(info.get("playing"))
         self._set_play_icon(self._playing)
+        self._update_timer()
         self._update_tray(title, artist, available=True)
         self._apply_caps(info)
 
@@ -844,9 +847,30 @@ class NowPlayingWidget(QWidget):
 
     # ---- progress ----------------------------------------------------------
     def _tick_progress(self):
+        if not self._expanded:
+            return
         if self._playing and self._dur > 0:
             est = self._pos + (time.monotonic() - self._anchor)
             self._update_progress(min(est, self._dur))
+
+    def _update_timer(self):
+        # The 200ms progress timer only does visible work when playing AND
+        # expanded AND on screen; keep it stopped otherwise (saves idle CPU).
+        if not hasattr(self, "_timer"):
+            return
+        if self._playing and self._expanded and self.isVisible():
+            if not self._timer.isActive():
+                self._timer.start()
+        elif self._timer.isActive():
+            self._timer.stop()
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self._update_timer()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._update_timer()
 
     def _update_progress(self, pos: float):
         if self._dur > 0:

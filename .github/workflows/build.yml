@@ -34,10 +34,7 @@ jobs:
         run: python make_icon.py
 
       - name: Build executable
-        run: >
-          pyinstaller --noconfirm --clean --onefile --windowed
-          --name TidalNowPlaying --icon icon.ico
-          --collect-all winsdk --collect-all tidalapi --collect-all pynput main.py
+        run: pyinstaller --noconfirm --clean TidalNowPlaying.spec
 
       - name: Generate SHA256SUMS.txt
         shell: pwsh

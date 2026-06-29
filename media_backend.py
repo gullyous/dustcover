@@ -132,9 +132,10 @@ async def _snapshot(mgr, last_key):
         return {"available": False}
 
     try:
-        info["playing"] = session.get_playback_info().playback_status == PLAYING
+        pi = session.get_playback_info()
     except Exception:
-        info["playing"] = False
+        pi = None
+    info["playing"] = bool(pi is not None and pi.playback_status == PLAYING)
 
     try:
         tl = session.get_timeline_properties()
@@ -150,7 +151,8 @@ async def _snapshot(mgr, last_key):
 
     # transport capabilities + shuffle/repeat state (drives the adaptive UI)
     try:
-        pi = session.get_playback_info()
+        if pi is None:
+            raise RuntimeError("playback info unavailable")
         c = pi.controls
         info["can_playpause"] = bool(c.is_play_enabled or c.is_pause_enabled
                                      or c.is_play_pause_toggle_enabled)
@@ -265,10 +267,12 @@ class MediaWorker(QThread):
 
     def stop(self):
         self._stop = True
+        self._cmds.put("__stop__")  # wake the blocking get() immediately
 
     def run(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        poll_s = max(0.05, config.POLL_MS / 1000.0)
         try:
             try:
                 mgr = loop.run_until_complete(MediaManager.request_async())
@@ -278,32 +282,38 @@ class MediaWorker(QThread):
                 return
 
             last_key = None
-            tick = 0
-            ticks_per_poll = max(1, int(config.POLL_MS / 100))
 
-            while not self._stop:
-                force = False
-                # 1) run any queued transport commands immediately
+            def refresh():
+                nonlocal last_key
                 try:
-                    while True:
-                        cmd = self._cmds.get_nowait()
-                        loop.run_until_complete(_do_command(mgr, cmd))
-                        force = True
-                except queue.Empty:
+                    info = loop.run_until_complete(_snapshot(mgr, last_key))
+                    if info.get("available"):
+                        last_key = info.get("_key", last_key)
+                    self.updated.emit(info)
+                except Exception:
                     pass
 
-                # 2) refresh now-playing every POLL_MS (or right after a command)
-                if force or tick % ticks_per_poll == 0:
+            refresh()  # initial paint
+            # Block until a command arrives or the poll interval elapses, rather
+            # than waking ~10x/sec. A queued command wakes us immediately.
+            while not self._stop:
+                try:
+                    cmd = self._cmds.get(timeout=poll_s)
+                except queue.Empty:
+                    refresh()
+                    continue
+                ran = False
+                while cmd != "__stop__":
+                    loop.run_until_complete(_do_command(mgr, cmd))
+                    ran = True
                     try:
-                        info = loop.run_until_complete(_snapshot(mgr, last_key))
-                        if info.get("available"):
-                            last_key = info.get("_key", last_key)
-                        self.updated.emit(info)
-                    except Exception:
-                        pass
-
-                tick += 1
-                self.msleep(100)
+                        cmd = self._cmds.get_nowait()
+                    except queue.Empty:
+                        break
+                if self._stop:
+                    break
+                if ran:
+                    refresh()
         finally:
             loop.close()
 

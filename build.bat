@@ -27,9 +27,7 @@ echo Generating app icon...
 
 echo.
 echo Building TidalNowPlaying.exe (this can take a couple of minutes)...
-"%VENV_PY%" -m PyInstaller --noconfirm --clean --onefile --windowed ^
-  --name "TidalNowPlaying" --icon "%~dp0icon.ico" ^
-  --collect-all winsdk --collect-all tidalapi --collect-all pynput "%~dp0main.py"
+"%VENV_PY%" -m PyInstaller --noconfirm --clean "%~dp0TidalNowPlaying.spec"
 if errorlevel 1 (
   echo.
   echo Build failed - see messages above.

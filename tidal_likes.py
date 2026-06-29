@@ -207,5 +207,7 @@ class TidalLiker(QObject):
                 label = _quality_label(t)
         except Exception:
             label = ""
+        if len(self._qcache) >= 256:        # bound the cache (drop oldest)
+            self._qcache.pop(next(iter(self._qcache)))
         self._qcache[key] = label
         self.quality_result.emit(title, artist, label)
