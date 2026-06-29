@@ -49,7 +49,7 @@ import icons
 # --- geometry --------------------------------------------------------------
 MARGIN = 18          # transparent padding so the drop shadow has room
 RADIUS = 18          # card corner radius
-COMPACT_CARD = (360, 92)
+COMPACT_CARD = (360, 104)
 EXPANDED_CARD = (360, 404)
 TOGGLE_D = 22        # corner expand/collapse button diameter
 CORNER_GAP = 6       # visible gap from the screen edges when locked into a corner
@@ -384,8 +384,10 @@ class NowPlayingWidget(QWidget):
 
         controls = QVBoxLayout()
         controls.setSpacing(4)
+        controls.addStretch(1)              # keep the buttons below the corner chevron
         controls.addLayout(btns)
         controls.addWidget(self.c_vol)
+        controls.addSpacing(2)
 
         row = QHBoxLayout(page)
         row.setContentsMargins(14, 14, 14, 14)
