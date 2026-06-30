@@ -926,12 +926,15 @@ class NowPlayingWidget(QWidget):
         if (title, artist) != (self._cur_title, self._cur_artist):
             return  # stale result for a track that already changed
         self.e_lyrics.set_lines(lines)
+        self.e_lyrics_btn.show()
         if lines:
-            self.e_lyrics_btn.show()
+            self.e_lyrics_btn.setEnabled(True)
+            self.e_lyrics_btn.setToolTip("Show lyrics")
         else:
+            self.e_lyrics_btn.setEnabled(False)   # dimmed signifier; won't expand
+            self.e_lyrics_btn.setToolTip("No lyrics for this track")
             if self._lyrics_mode:
                 self._set_lyrics_mode(False)
-            self.e_lyrics_btn.hide()
 
     def _toggle_lyrics(self):
         self._set_lyrics_mode(not self._lyrics_mode)
@@ -1057,11 +1060,10 @@ class NowPlayingWidget(QWidget):
         if track_changed:
             self._liked = False        # a new track starts unliked in the UI
             self.e_quality.hide()      # clear the quality badge until it resolves
-            if self._lyrics_mode:
-                self.e_lyrics.set_loading()
-            else:
-                self.e_lyrics_btn.hide()   # show only once THIS track's lyrics resolve
-                self.e_lyrics.set_lines([])
+            self.e_lyrics_btn.show()
+            self.e_lyrics_btn.setEnabled(False)   # signifier while we check / if none
+            self.e_lyrics_btn.setToolTip("Finding lyrics...")
+            self.e_lyrics.set_loading()
         self._cur_title, self._cur_artist = title, artist
         self._cur_album = info.get("album") or ""
         self._refresh_heart()
