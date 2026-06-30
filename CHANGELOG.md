@@ -9,6 +9,12 @@ to [Semantic Versioning](https://semver.org/).
 - Optional **"Tint accent from album art"** (Settings -> Appearance): the play
   button, progress bar, quality badge and volume slider take a vivid color
   sampled from the current cover, with a contrast-aware icon. Off by default.
+- Tooltips (showing the hotkey) and accessible names on the transport buttons;
+  capability-disabled controls now render visibly inert instead of identical.
+
+### Changed
+- The card's ambient background is cached and rebuilt only when the size or
+  artwork changes (not on every repaint), for smoother dragging.
 
 ## [1.1.1] - 2026-06-29
 

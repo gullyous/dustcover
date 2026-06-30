@@ -199,6 +199,8 @@ class Card(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._ambient = None  # tiny pixmap, upscaled smoothly for a cheap blur
+        self._layer = None    # cached opaque composite (base + ambient + overlay)
+        self._layer_key = None
 
     def set_ambient(self, src: QPixmap | None):
         if src is None:
@@ -206,25 +208,13 @@ class Card(QFrame):
         else:
             self._ambient = src.scaled(
                 36, 36, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        self._layer = None    # invalidate the cached composite
         self.update()
 
-    def paintEvent(self, _):
-        bg = getattr(config, "BACKGROUND_OPACITY", 1.0)
-        bg = 0.0 if bg < 0 else 1.0 if bg > 1 else bg
-
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        p.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        rect = QRectF(self.rect())
-        path = QPainterPath()
-        path.addRoundedRect(rect, RADIUS, RADIUS)
-
-        # Build the OPAQUE background composite (base + ambient + dark overlay)
-        # on a separate layer, then blit it once at BACKGROUND_OPACITY. Doing it
-        # in one blit gives the panel a uniform alpha (so the desktop shows
-        # through evenly) instead of compounding each layer's alpha. The child
-        # widgets (text, cover, buttons) paint on top and stay fully opaque.
-        dpr = self.devicePixelRatioF()
+    def _build_layer(self, rect, dpr):
+        # The OPAQUE background composite (base + ambient + dark overlay). Built
+        # once and cached; blitting it at BACKGROUND_OPACITY gives the panel a
+        # uniform alpha (the desktop shows through evenly).
         layer = QPixmap(max(1, round(self.width() * dpr)),
                         max(1, round(self.height() * dpr)))
         layer.setDevicePixelRatio(dpr)
@@ -238,10 +228,28 @@ class Card(QFrame):
         overlay.setColorAt(1.0, QColor(8, 8, 12, 220))
         lp.fillRect(rect, overlay)
         lp.end()
+        return layer
+
+    def paintEvent(self, _):
+        bg = getattr(config, "BACKGROUND_OPACITY", 1.0)
+        bg = 0.0 if bg < 0 else 1.0 if bg > 1 else bg
+
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        rect = QRectF(self.rect())
+        path = QPainterPath()
+        path.addRoundedRect(rect, RADIUS, RADIUS)
+
+        dpr = self.devicePixelRatioF()
+        key = (self.width(), self.height(), round(dpr * 100), id(self._ambient))
+        if self._layer is None or self._layer_key != key:
+            self._layer = self._build_layer(rect, dpr)
+            self._layer_key = key
 
         p.setClipPath(path)
         p.setOpacity(bg)
-        p.drawPixmap(0, 0, layer)
+        p.drawPixmap(0, 0, self._layer)
         p.setOpacity(1.0)
 
         # crisp hairline border (drawn at full opacity for a defined edge)
@@ -314,6 +322,7 @@ class NowPlayingWidget(QWidget):
         self._timer.setInterval(200)
         self._timer.timeout.connect(self._tick_progress)
         # started on demand by _update_timer() (only while playing + expanded + visible)
+        self._set_tooltips()
 
     # ---- UI construction ---------------------------------------------------
     def _build_ui(self):
@@ -504,6 +513,24 @@ class NowPlayingWidget(QWidget):
         b.clicked.connect(lambda: on_click())
         return b
 
+    def _set_tooltips(self):
+        hk = config.HOTKEYS_ENABLED
+        tips = [
+            (("c_like", "e_like"), "Like" + (" (Ctrl+Alt+L)" if hk else "")),
+            (("c_prev", "e_prev"), "Previous" + (" (Ctrl+Alt+Left)" if hk else "")),
+            (("c_play", "e_play"), "Play / Pause" + (" (Ctrl+Alt+Space)" if hk else "")),
+            (("c_next", "e_next"), "Next" + (" (Ctrl+Alt+Right)" if hk else "")),
+            (("e_shuffle",), "Shuffle"),
+            (("e_repeat",), "Repeat"),
+            (("toggle_btn",), "Expand / collapse (double-click the card)"),
+        ]
+        for names, tip in tips:
+            for n in names:
+                b = getattr(self, n, None)
+                if b is not None:
+                    b.setToolTip(tip)
+                    b.setAccessibleName(tip.split(" (")[0])
+
     # ---- volume ------------------------------------------------------------
     def _on_vol_changed(self, value):
         if self._vol_updating:
@@ -594,6 +621,8 @@ class NowPlayingWidget(QWidget):
             QPushButton[accent="true"]         {{ background:{acc}; }}
             QPushButton[accent="true"]:hover   {{ background:{acc}; }}
             QPushButton[accent="true"]:pressed {{ background:{acc}; }}
+            QPushButton:disabled {{ background:rgba(255,255,255,0.04); }}
+            QPushButton[accent="true"]:disabled {{ background:rgba(255,255,255,0.10); }}
             QSlider::groove:horizontal {{ height:4px; background:rgba(255,255,255,0.18);
                                           border-radius:2px; }}
             QSlider::sub-page:horizontal {{ background:{acc}; border-radius:2px; }}
