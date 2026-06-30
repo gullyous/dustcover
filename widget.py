@@ -466,8 +466,12 @@ class NowPlayingWidget(QWidget):
                                       self.playpause_clicked.emit, 36, accent=True)
         self.c_next = self._round_btn(icons.next_icon(INK), self.next_clicked.emit, 30)
 
+        self.c_lyrics_btn = self._round_btn(icons.lyrics_icon(SUBTLE),
+                                            self._open_lyrics, 26)
+        self.c_lyrics_btn.hide()   # signifier; shown while a track plays
         btns = QHBoxLayout()
         btns.setSpacing(6)
+        btns.addWidget(self.c_lyrics_btn)
         btns.addWidget(self.c_like)
         btns.addWidget(self.c_prev)
         btns.addWidget(self.c_play)
@@ -926,15 +930,13 @@ class NowPlayingWidget(QWidget):
         if (title, artist) != (self._cur_title, self._cur_artist):
             return  # stale result for a track that already changed
         self.e_lyrics.set_lines(lines)
-        self.e_lyrics_btn.show()
-        if lines:
-            self.e_lyrics_btn.setEnabled(True)
-            self.e_lyrics_btn.setToolTip("Show lyrics")
-        else:
-            self.e_lyrics_btn.setEnabled(False)   # dimmed signifier; won't expand
-            self.e_lyrics_btn.setToolTip("No lyrics for this track")
-            if self._lyrics_mode:
-                self._set_lyrics_mode(False)
+        tip = "Show lyrics" if lines else "No lyrics for this track"
+        for b in (self.c_lyrics_btn, self.e_lyrics_btn):
+            b.show()
+            b.setEnabled(bool(lines))   # dimmed signifier when none; won't expand
+            b.setToolTip(tip)
+        if not lines and self._lyrics_mode:
+            self._set_lyrics_mode(False)
 
     def _toggle_lyrics(self):
         self._set_lyrics_mode(not self._lyrics_mode)
@@ -948,6 +950,14 @@ class NowPlayingWidget(QWidget):
             icons.lyrics_icon(self._effective_accent() if on else SUBTLE))
         if on:
             self.e_lyrics.set_position(self._pos)
+
+    def _open_lyrics(self):
+        # From the compact bar: expand and open the lyrics panel.
+        if not self.e_lyrics.has_lyrics():
+            return
+        if not self._expanded:
+            self._set_mode(True)
+        self._set_lyrics_mode(True)
 
     def _open_tidal(self):
         for opener in (lambda: webbrowser.open("tidal://"),
@@ -1048,6 +1058,7 @@ class NowPlayingWidget(QWidget):
             self.e_repeat.hide()
             self.e_quality.hide()
             self.e_lyrics.set_lines([])
+            self.c_lyrics_btn.hide()
             self.e_lyrics_btn.hide()
             if self._lyrics_mode:
                 self._set_lyrics_mode(False)
@@ -1060,9 +1071,10 @@ class NowPlayingWidget(QWidget):
         if track_changed:
             self._liked = False        # a new track starts unliked in the UI
             self.e_quality.hide()      # clear the quality badge until it resolves
-            self.e_lyrics_btn.show()
-            self.e_lyrics_btn.setEnabled(False)   # signifier while we check / if none
-            self.e_lyrics_btn.setToolTip("Finding lyrics...")
+            for b in (self.c_lyrics_btn, self.e_lyrics_btn):
+                b.show()
+                b.setEnabled(False)   # signifier while we check / if none
+                b.setToolTip("Finding lyrics...")
             self.e_lyrics.set_loading()
         self._cur_title, self._cur_artist = title, artist
         self._cur_album = info.get("album") or ""

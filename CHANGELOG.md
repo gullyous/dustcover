@@ -10,7 +10,8 @@ to [Semantic Versioning](https://semver.org/).
   times row). The active line is centered and accented and auto-scrolls with the
   song; click any line to seek to it. Lyrics come from LRCLIB (free, keyless);
   the toggle dims (disabled, with a "No lyrics for this track" tooltip) when a
-  track has none, so it won't open an empty panel.
+  track has none, so it won't open an empty panel. The lyrics button is on both
+  the compact bar and the expanded view; on compact it expands straight in.
 - Optional **"Tint accent from album art"** (Settings -> Appearance): the play
   button, progress bar, quality badge and volume slider take a vivid color
   sampled from the current cover, with a contrast-aware icon. Off by default.
