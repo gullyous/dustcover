@@ -73,7 +73,12 @@ sponsored by TIDAL or Aspiro AB. "TIDAL" is a trademark of its respective owner.
 """
 
 
-RELEASE_NOTES = """v1.1.0
+RELEASE_NOTES = """v1.1.1
+
+  - Tiny volume slider under the compact controls for a quick adjust.
+  - Fixed the expand chevron overlapping the next-track button in compact mode.
+
+v1.1.0
 
 Added
   - Volume slider: control the playing app's volume (TIDAL or your browser) with

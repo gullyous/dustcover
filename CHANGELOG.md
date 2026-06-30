@@ -3,11 +3,15 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.1.1] - 2026-06-29
 
 ### Added
 - A tiny volume slider under the compact controls, for quick volume changes
   without expanding the widget.
+
+### Fixed
+- The expand chevron no longer overlaps the next-track button in the compact bar
+  (the bar is slightly taller to fit the volume slider below the controls).
 
 ## [1.1.0] - 2026-06-29
 
