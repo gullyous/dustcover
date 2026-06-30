@@ -12,8 +12,11 @@ no API keys and no setup. Signing in is only needed for the optional extras
 ![Python: 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB)
 
 <p align="center">
-  <img src="assets/expanded.png" width="330" alt="Expanded view">
-  <img src="assets/compact.png" width="330" alt="Compact view">
+  <img src="assets/expanded.png" width="250" alt="Expanded view">
+  <img src="assets/lyrics.png" width="250" alt="Synced lyrics">
+</p>
+<p align="center">
+  <img src="assets/compact.png" width="340" alt="Compact bar">
 </p>
 
 > **Disclaimer:** This is an unofficial, third-party tool. It is not affiliated
@@ -26,11 +29,12 @@ no API keys and no setup. Signing in is only needed for the optional extras
 - Play / pause, next, and previous controls
 - Compact bar and expanded card, toggled by button, double-click, or tray menu
 - Blurred album-art ambient background for the signature "dark glass" look
-- Configurable transparency and accent color
+- Configurable transparency and accent color, with optional auto-accent tinted from the album art
 - Seekable progress bar (drag to scrub) in the expanded view
 - Shuffle and repeat toggles, shown when the current source supports them
 - System-tray icon with full controls and quit
 - Volume slider (in both the compact bar and the expanded card) for the playing app, via Windows Core Audio, with a mute toggle and a system-volume fallback
+- Synced (karaoke) lyrics in the expanded view: the active line is highlighted and auto-scrolls, and you can click a line to seek. From LRCLIB (free); a dimmed lyrics button signals when a track has none
 - Heart button to favorite the playing track to your TIDAL collection (optional, one-time sign-in)
 - Quality badge showing what the track is available in on TIDAL (MAX / Hi-Res / Lossless / High, plus Atmos)
 - Adaptive controls: actions the current source doesn't support are greyed out or hidden
@@ -98,8 +102,9 @@ The result is `dist\TidalNowPlaying.exe`.
 - **TIDAL web player:** the tray/right-click menu's **TIDAL web player** item opens listen.tidal.com as a standalone window (via Edge/Chrome). Handy if you don't have the desktop app, the widget reads it through Windows media controls, so keep **Follow other apps** on.
 - **Seek:** in expanded mode, drag the progress bar to jump to any point in the track.
 - **Volume:** a slider under the compact controls (and in the expanded card, with a mute button) sets the playing app's volume (TIDAL, or your browser for the web player), falling back to the system volume. It appears only when a controllable audio session is found.
+- **Lyrics:** when the current track has synced lyrics, a lyrics button lights up (on both the compact bar and the expanded view). Tap it for a karaoke view, the active line is highlighted and auto-scrolls, and you can click any line to seek. The button dims when a track has no lyrics.
 - **Shuffle / repeat:** toggle buttons appear in expanded mode when the player supports them. (TIDAL does not expose shuffle/repeat to Windows, so they stay hidden for TIDAL.)
-- **Settings:** right-click the tray icon (or the widget) and choose **Settings...** for accent, opacity, refresh interval, run-at-startup, hotkeys, and update checks. An **About** tab shows the version, links, and licenses.
+- **Settings:** right-click the tray icon (or the widget) and choose **Settings...** for accent (and **tint accent from album art**), opacity, refresh interval, run-at-startup, hotkeys, and update checks. An **About** tab shows the version, links, and licenses.
 - **Global hotkeys** (when enabled): Ctrl+Alt+Space play/pause, Ctrl+Alt+Left/Right prev/next, Ctrl+Alt+L like, Ctrl+Alt+H show/hide.
 - **Heart (like):** click the heart to add the current track to your TIDAL collection. The first time, sign in once via the tray menu ("Sign in to TIDAL"). See below.
 
@@ -142,6 +147,7 @@ if you prefer.
 | `FALLBACK_TO_ANY` | `True` | If TIDAL is not playing, follow any other player (Spotify, a browser, etc.). |
 | `POLL_MS` | `500` | How often to refresh now-playing info, in milliseconds. |
 | `ACCENT` | `"#39d6e0"` | Accent color for the play button and progress bar. |
+| `AUTO_ACCENT` | `False` | Tint the accent from the album art instead of the fixed color above. |
 | `START_EXPANDED` | `False` | Start in the larger expanded card. |
 | `ALWAYS_ON_TOP` | `True` | Keep the widget above other windows. |
 | `BACKGROUND_OPACITY` | `0.82` | Panel transparency (0.0 = clear, 1.0 = solid); text and controls stay opaque. |
@@ -164,6 +170,7 @@ if you prefer.
 | `hotkeys.py` | Optional global hotkeys (pynput). |
 | `updater.py` | Optional in-app update check + self-replace install (GitHub releases). |
 | `volume_backend.py` | Optional per-app volume control via Windows Core Audio (pycaw), on its own COM thread. |
+| `lyrics_backend.py` | Optional synced lyrics from LRCLIB, on a background thread. |
 | `make_icon.py` | Generates `icon.ico` for the packaged app. |
 | `build.bat` | One-click build of the standalone `.exe`. |
 | `run.bat` / `run-debug.bat` | Run from source (with or without a console). |
@@ -203,6 +210,7 @@ Note: current builds are not code-signed, so Windows SmartScreen may show an
 - [tidalapi](https://github.com/tamland/python-tidal) (unofficial TIDAL API client) for the optional favorite feature, licensed under LGPLv3
 - [pynput](https://github.com/moses-palmer/pynput) for optional global hotkeys, licensed under LGPLv3
 - [pycaw](https://github.com/AndreMiras/pycaw) for the optional per-app volume control (Windows Core Audio), licensed under MIT
+- [LRCLIB](https://lrclib.net) for free, keyless time-synced lyrics
 - Icons are drawn at runtime with QPainter, so there are no image assets to ship
 
 Because the packaged `.exe` bundles PySide6 (LGPLv3), the full source for this

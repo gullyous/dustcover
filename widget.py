@@ -199,7 +199,7 @@ class LyricsView(QWidget):
     neighbours fade with distance; click a line to seek to it."""
 
     seek_requested = Signal(float)   # absolute seconds
-    LINE_H = 30
+    LINE_H = 34
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -255,13 +255,13 @@ class LyricsView(QWidget):
             f = p.font()
             if i == self._active:
                 p.setPen(QColor(self.accent))
-                f.setPointSize(12)
+                f.setPointSize(15)
                 f.setBold(True)
             else:
                 col = QColor(255, 255, 255)
-                col.setAlpha(max(35, 170 - abs(i - act) * 38))
+                col.setAlpha(max(110, 225 - abs(i - act) * 32))
                 p.setPen(col)
-                f.setPointSize(10)
+                f.setPointSize(12)
                 f.setBold(False)
             p.setFont(f)
             line = QFontMetrics(f).elidedText(txt, Qt.ElideRight, w - 24)
