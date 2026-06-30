@@ -131,6 +131,7 @@ class ProgressLine(QWidget):
         self._frac = 0.0
         self._seekable = False
         self._dragging = False
+        self.accent = config.ACCENT
         self.setFixedHeight(14)
 
     def set_seekable(self, ok: bool):
@@ -164,11 +165,11 @@ class ProgressLine(QWidget):
         if self._frac > 0:
             fill = QRectF(track)
             fill.setWidth(max(self.BAR_H, fx))
-            p.setBrush(QColor(config.ACCENT))
+            p.setBrush(QColor(self.accent))
             p.drawRoundedRect(fill, rad, rad)
         if self._seekable:
             kr = 5
-            p.setBrush(QColor(config.ACCENT))
+            p.setBrush(QColor(self.accent))
             p.drawEllipse(QPointF(min(max(kr, fx), w - kr), cy), kr, kr)
         p.end()
 
@@ -292,6 +293,7 @@ class NowPlayingWidget(QWidget):
         self._logged_in = False   # signed in to TIDAL (for likes/quality)
         self._muted = False         # current app/system mute (from volume backend)
         self._vol_updating = False  # guard: ignore slider signals during programmatic set
+        self._accent_dyn = None     # accent tinted from album art (auto-accent)
         self._shuffle = False
         self._repeat = 0   # 0 none, 1 track, 2 list
 
@@ -530,25 +532,71 @@ class NowPlayingWidget(QWidget):
         self.c_vol.setValue(v)
         self._vol_updating = False
 
+    # ---- accent (fixed, or auto-tinted from album art) ---------------------
+    def _effective_accent(self):
+        if config.AUTO_ACCENT and self._accent_dyn:
+            return self._accent_dyn
+        return config.ACCENT
+
+    def _on_accent_color(self, hexcolor):
+        c = QColor(hexcolor)
+        lum = 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
+        return "#0a0a0a" if lum > 140 else "#ffffff"
+
+    def _effective_on_accent(self):
+        return self._on_accent_color(self._effective_accent())
+
+    def _compute_accent(self, pm):
+        """Pick a vivid accent from the album art, or None if too monochrome."""
+        try:
+            img = pm.toImage().scaled(24, 24, Qt.IgnoreAspectRatio,
+                                      Qt.SmoothTransformation)
+            best, best_score = None, -1.0
+            for y in range(img.height()):
+                for x in range(img.width()):
+                    c = img.pixelColor(x, y)
+                    h, s, v, _a = c.getHsv()
+                    if h < 0 or v < 60 or v > 245:
+                        continue
+                    score = (s / 255.0) * (v / 255.0)
+                    if score > best_score:
+                        best_score, best = score, c
+            if best is None or best_score < 0.12:
+                return None
+            h, s, v, _a = best.getHsv()
+            return QColor.fromHsv(h, min(255, max(s, 150)),
+                                  min(255, max(v, 175))).name()
+        except Exception:
+            return None
+
+    def _apply_accent(self):
+        """Push the effective accent through every accent-colored element."""
+        self.progress.accent = self._effective_accent()
+        self.progress.update()
+        self._apply_style()
+        self._set_play_icon(self._playing)
+        self._refresh_shuffle_repeat()
+
     def _apply_style(self):
+        acc = self._effective_accent()
         self.setStyleSheet(f"""
             QLabel#title      {{ color:{INK}; font-size:13px; font-weight:600; }}
             QLabel#title_big  {{ color:{INK}; font-size:16px; font-weight:700; }}
             QLabel#artist     {{ color:{SUBTLE}; font-size:11px; }}
             QLabel#time       {{ color:{SUBTLE}; font-size:10px; }}
-            QLabel#quality    {{ color:{config.ACCENT}; border:1px solid {config.ACCENT};
+            QLabel#quality    {{ color:{acc}; border:1px solid {acc};
                                   border-radius:8px; padding:1px 8px;
                                   font-size:10px; font-weight:700; }}
             QLabel            {{ background:transparent; }}
             QPushButton {{ border:none; background:rgba(255,255,255,0.10); }}
             QPushButton:hover   {{ background:rgba(255,255,255,0.20); }}
             QPushButton:pressed {{ background:rgba(255,255,255,0.32); }}
-            QPushButton[accent="true"]         {{ background:{config.ACCENT}; }}
-            QPushButton[accent="true"]:hover   {{ background:{config.ACCENT}; }}
-            QPushButton[accent="true"]:pressed {{ background:{config.ACCENT}; }}
+            QPushButton[accent="true"]         {{ background:{acc}; }}
+            QPushButton[accent="true"]:hover   {{ background:{acc}; }}
+            QPushButton[accent="true"]:pressed {{ background:{acc}; }}
             QSlider::groove:horizontal {{ height:4px; background:rgba(255,255,255,0.18);
                                           border-radius:2px; }}
-            QSlider::sub-page:horizontal {{ background:{config.ACCENT}; border-radius:2px; }}
+            QSlider::sub-page:horizontal {{ background:{acc}; border-radius:2px; }}
             QSlider::add-page:horizontal {{ background:rgba(255,255,255,0.18);
                                             border-radius:2px; }}
             QSlider::handle:horizontal {{ width:12px; height:12px; margin:-4px 0;
@@ -566,8 +614,9 @@ class NowPlayingWidget(QWidget):
             flags |= Qt.WindowStaysOnTopHint
         was_visible = self.isVisible()
         self.setWindowFlags(flags)          # note: this hides the window
-        self._apply_style()                 # picks up the new accent color
-        self._refresh_shuffle_repeat()
+        self._accent_dyn = (self._compute_accent(self._cover_src)
+                            if (config.AUTO_ACCENT and self._cover_src) else None)
+        self._apply_accent()                # picks up the new / auto accent color
         self._refresh_heart()
         self.card.update()
         self.progress.update()
@@ -870,9 +919,13 @@ class NowPlayingWidget(QWidget):
                 self._cover_src = None
             self.card.set_ambient(self._cover_src)
             self._refresh_covers()
+            self._accent_dyn = (self._compute_accent(self._cover_src)
+                                if (config.AUTO_ACCENT and self._cover_src) else None)
+            self._apply_accent()
 
     def _set_play_icon(self, playing: bool):
-        icon = icons.pause_icon(ON_ACCENT) if playing else icons.play_icon(ON_ACCENT)
+        oa = self._effective_on_accent()
+        icon = icons.pause_icon(oa) if playing else icons.play_icon(oa)
         for b in self._play_buttons:
             b.setIcon(icon)
 
@@ -892,12 +945,13 @@ class NowPlayingWidget(QWidget):
         self._refresh_shuffle_repeat()
 
     def _refresh_shuffle_repeat(self):
+        acc = self._effective_accent()
         self.e_shuffle.setIcon(
-            icons.shuffle_icon(config.ACCENT if self._shuffle else SUBTLE))
+            icons.shuffle_icon(acc if self._shuffle else SUBTLE))
         if self._repeat == 1:
-            self.e_repeat.setIcon(icons.repeat_icon(config.ACCENT, one=True))
+            self.e_repeat.setIcon(icons.repeat_icon(acc, one=True))
         elif self._repeat == 2:
-            self.e_repeat.setIcon(icons.repeat_icon(config.ACCENT))
+            self.e_repeat.setIcon(icons.repeat_icon(acc))
         else:
             self.e_repeat.setIcon(icons.repeat_icon(SUBTLE))
 

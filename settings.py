@@ -25,6 +25,7 @@ ORG, APP = "TidalWidget", "TidalWidget"
 # settings key -> (config attribute, python type)
 FIELDS = {
     "accent": ("ACCENT", str),
+    "auto_accent": ("AUTO_ACCENT", bool),
     "background_opacity": ("BACKGROUND_OPACITY", float),
     "window_opacity": ("WINDOW_OPACITY", float),
     "always_on_top": ("ALWAYS_ON_TOP", bool),

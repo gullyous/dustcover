@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Optional **"Tint accent from album art"** (Settings -> Appearance): the play
+  button, progress bar, quality badge and volume slider take a vivid color
+  sampled from the current cover, with a contrast-aware icon. Off by default.
+
 ## [1.1.1] - 2026-06-29
 
 ### Added

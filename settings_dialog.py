@@ -161,11 +161,15 @@ class SettingsDialog(QDialog):
         self.win.setRange(40, 100)
         self.win.setValue(int(round(float(cur["window_opacity"]) * 100)))
 
+        self.auto_accent = QCheckBox("Tint accent from album art")
+        self.auto_accent.setChecked(bool(cur.get("auto_accent", False)))
+
         appearance = QGroupBox("Appearance")
         af = QFormLayout(appearance)
         af.addRow("Accent color", self.accent_btn)
         af.addRow("Panel opacity", self.bg)
         af.addRow("Whole-widget opacity", self.win)
+        af.addRow(self.auto_accent)
 
         self.aot = QCheckBox("Always on top")
         self.aot.setChecked(bool(cur["always_on_top"]))
@@ -326,6 +330,7 @@ class SettingsDialog(QDialog):
     def values(self):
         return {
             "accent": self._accent,
+            "auto_accent": self.auto_accent.isChecked(),
             "background_opacity": self.bg.value() / 100.0,
             "window_opacity": self.win.value() / 100.0,
             "poll_ms": self.poll.value(),

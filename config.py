@@ -21,6 +21,11 @@ POLL_MS = 500
 # Accent color used for the play button and progress bar.
 ACCENT = "#39d6e0"
 
+# When True, tint the accent (play button, progress, badge) from the current
+# album art instead of using the fixed ACCENT above. Falls back to ACCENT when
+# the art is too monochrome to pick a vivid color.
+AUTO_ACCENT = False
+
 # Panel transparency (0.0 = invisible, 1.0 = solid). The card background and
 # album-art ambience are painted at this opacity so the desktop shows through,
 # while text, cover, and buttons stay fully opaque and readable ("dark glass").
