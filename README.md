@@ -34,8 +34,9 @@ no API keys and no setup. Signing in is only needed for the optional extras
 - Shuffle and repeat toggles, shown when the current source supports them
 - System-tray icon with full controls and quit
 - Volume slider (in both the compact bar and the expanded card) for the playing app, via Windows Core Audio, with a mute toggle and a system-volume fallback
-- Synced (karaoke) lyrics in the expanded view: the active line is highlighted and auto-scrolls, and you can click a line to seek. Scroll to nudge the timing when a track's lyrics drift (middle-click resets). Tracks with only plain (unsynced) lyrics show them as a scroll-through block. From LRCLIB (free); a dimmed lyrics button signals when a track has none
-- Heart button to favorite the playing track to your TIDAL collection (optional, one-time sign-in)
+- Synced (karaoke) lyrics in the expanded view: the active line is highlighted and auto-scrolls, and you can click a line to seek. Scroll to nudge the timing when a track's lyrics drift (middle-click resets). Right-click to copy a line or the whole lyric. Tracks with only plain (unsynced) lyrics show them as a scroll-through block. From LRCLIB (free); a dimmed lyrics button signals when a track has none
+- Heart button to favorite the playing track to your TIDAL collection, or un-favorite one that is already in it (the heart reflects your real collection when signed in). Optional, one-time sign-in
+- Album art dims while playback is paused, so you can read play state at a glance
 - Quality badge showing what the track is available in on TIDAL (MAX / Hi-Res / Lossless / High, plus Atmos)
 - Adaptive controls: actions the current source doesn't support are greyed out or hidden
 - Preferences dialog (with an About + licenses tab), run-at-Windows-startup, and optional global hotkeys

@@ -5,6 +5,30 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-01
+
+### Added
+- **The heart reflects your actual TIDAL collection.** When signed in, a track
+  already in your collection now shows a filled heart, and clicking it un-favorites
+  correctly (before, the heart always started empty and could only ever add). Your
+  own like/unlike stays authoritative even while the collection is still loading.
+- **Copy lyrics**: right-click the lyrics panel for "Copy all lyrics" or "Copy
+  current line".
+- **Sync nudge is discoverable**: a dim "scroll to sync" signifier shows on synced
+  lyrics until you nudge (then it becomes the offset badge).
+
+### Changed
+- The album art dims while playback is paused, so you can tell play state at a glance.
+
+### Fixed
+- Lyrics are cached per (title, artist, **album, and duration**), so two recordings
+  that share a title/artist (a live version, a remaster, a cover) no longer show
+  each other's lyrics or timings.
+- Signing in while a track is already playing now refreshes that track's quality
+  badge and heart immediately, instead of waiting for the next track.
+- A plain click (or double-click) on the card no longer nudges the widget or
+  rewrites its saved position; dragging now needs a small deliberate movement.
+
 ## [1.2.0] - 2026-07-01
 
 ### Added
