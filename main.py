@@ -65,6 +65,8 @@ def main():
     liker.login_state.connect(widget.on_login_state)
     widget.quality_requested.connect(liker.quality)
     liker.quality_result.connect(widget.on_quality)
+    widget.favorite_requested.connect(liker.favorite_state_request)
+    liker.favorite_state.connect(widget.on_favorite_state)
     widget.on_login_state(liker.signed_in(), "")  # hide "Sign in" if already signed in
 
     # synced lyrics (LRCLIB, free / keyless)

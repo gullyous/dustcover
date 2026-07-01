@@ -99,6 +99,17 @@ def _rounded_cover(src: QPixmap, size: int, radius: int) -> QPixmap:
     return target
 
 
+def _dim_pixmap(pm: QPixmap) -> QPixmap:
+    """Return a darkened copy of a (rounded) cover, to read 'paused' at a glance.
+    SourceAtop keeps the transparent rounded corners transparent."""
+    out = QPixmap(pm)
+    p = QPainter(out)
+    p.setCompositionMode(QPainter.CompositionMode_SourceAtop)
+    p.fillRect(out.rect(), QColor(0, 0, 0, 120))
+    p.end()
+    return out
+
+
 class ElidedLabel(QLabel):
     """A QLabel that elides its text with '...' to whatever width it's given."""
 
@@ -304,6 +315,28 @@ class LyricsView(QWidget):
             if t is not None:
                 self.seek_requested.emit(max(0.0, t - self._offset))
 
+    def contextMenuEvent(self, e):
+        if not self._lines:
+            e.ignore()   # let the window's management menu show through
+            return
+        # Snapshot: menu.exec runs a nested event loop, so a track change can
+        # mutate _lines/_active while the menu is open.
+        lines = list(self._lines)
+        active = self._active
+        menu = QMenu(self)
+        act_all = menu.addAction("Copy all lyrics")
+        act_line = None
+        if self._synced and 0 <= active < len(lines):
+            act_line = menu.addAction("Copy current line")
+        chosen = menu.exec(e.globalPos())
+        if chosen is None:
+            return
+        cb = QGuiApplication.clipboard()
+        if chosen is act_all:
+            cb.setText("\n".join(txt for _t, txt in lines))
+        elif act_line is not None and chosen is act_line and 0 <= active < len(lines):
+            cb.setText(lines[active][1])
+
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
@@ -318,11 +351,17 @@ class LyricsView(QWidget):
             self._paint_synced(p, w, h)
         else:
             self._paint_plain(p, w, h)
-        if self._synced and abs(self._offset) >= 0.05:
+        if self._synced:
             f = p.font(); f.setPointSize(9); f.setBold(False); p.setFont(f)
-            p.setPen(QColor(self.accent))
-            p.drawText(QRectF(0, 4, w - 8, 16), Qt.AlignRight | Qt.AlignTop,
-                       f"sync {self._offset:+.1f}s")
+            box = QRectF(0, 4, w - 8, 16)
+            if abs(self._offset) >= 0.05:
+                p.setPen(QColor(self.accent))
+                p.drawText(box, Qt.AlignRight | Qt.AlignTop, f"sync {self._offset:+.1f}s")
+            else:
+                # dim, always-present signifier so the scroll-to-nudge gesture
+                # is discoverable; the offset badge replaces it once nudged.
+                hint = QColor(SUBTLE); hint.setAlpha(120); p.setPen(hint)
+                p.drawText(box, Qt.AlignRight | Qt.AlignTop, "scroll to sync")
         p.end()
 
     def _paint_synced(self, p, w, h):
@@ -443,6 +482,7 @@ class NowPlayingWidget(QWidget):
     repeat_clicked = Signal()
     settings_requested = Signal()
     quality_requested = Signal(str, str)   # title, artist (request "available in" quality)
+    favorite_requested = Signal(str, str)  # title, artist (request real liked state)
     check_updates_requested = Signal()     # tray "Check for updates..." (loud check)
     volume_changed = Signal(float)         # 0.0-1.0, from the volume slider
     mute_toggled = Signal(bool)            # desired mute state
@@ -459,6 +499,7 @@ class NowPlayingWidget(QWidget):
         self.setWindowOpacity(min(1.0, max(0.2, wo)))
 
         self._drag = None
+        self._moved = False            # did the current drag actually move the window?
         self._cover_src = None         # full-res cover QPixmap (or None)
         self._expanded = bool(config.START_EXPANDED)
         self._corner = "br"            # which screen corner the widget locks to
@@ -468,6 +509,7 @@ class NowPlayingWidget(QWidget):
         self._cur_artist = ""
         self._cur_album = ""
         self._liked = False
+        self._heart_user_owned = False  # user explicitly toggled the current track
         self._logged_in = False   # signed in to TIDAL (for likes/quality)
         self._muted = False         # current app/system mute (from volume backend)
         self._vol_updating = False  # guard: ignore slider signals during programmatic set
@@ -991,10 +1033,22 @@ class NowPlayingWidget(QWidget):
             return
         if action == "added":
             self._liked = True
+            self._heart_user_owned = True
             self._tray_msg("Added to your collection:\n" + label, "TIDAL")
         elif action == "removed":
             self._liked = False
+            self._heart_user_owned = True
             self._tray_msg("Removed from your collection:\n" + label, "TIDAL")
+        self._refresh_heart()
+
+    def on_favorite_state(self, title, artist, is_fav):
+        # Ground-truth liked state from TIDAL, so the heart shows reality (not
+        # just optimistic add) and clicking it toggles in the right direction.
+        if (title, artist) != (self._cur_title, self._cur_artist):
+            return  # stale result for a track that already changed
+        if self._heart_user_owned:
+            return  # user's own like/unlike wins over an in-flight ground truth
+        self._liked = bool(is_fav)
         self._refresh_heart()
 
     def on_login_link(self, url):
@@ -1008,6 +1062,11 @@ class NowPlayingWidget(QWidget):
         self._logged_in = bool(ok)
         if self.tray:
             self.act_signin.setVisible(not self._logged_in)
+        # Sign-in can complete while a track is already playing; re-resolve its
+        # quality badge and heart now instead of waiting for the next track.
+        if self._logged_in and self._cur_title:
+            self.quality_requested.emit(self._cur_title, self._cur_artist)
+            self.favorite_requested.emit(self._cur_title, self._cur_artist)
 
     def on_quality(self, title, artist, label):
         if (title, artist) != (self._cur_title, self._cur_artist):
@@ -1176,6 +1235,7 @@ class NowPlayingWidget(QWidget):
         track_changed = (title != self._cur_title or artist != self._cur_artist)
         if track_changed:
             self._liked = False        # a new track starts unliked in the UI
+            self._heart_user_owned = False   # ground-truth may set the heart again
             self.e_quality.hide()      # clear the quality badge until it resolves
             for b in (self.c_lyrics_btn, self.e_lyrics_btn):
                 b.show()
@@ -1189,11 +1249,14 @@ class NowPlayingWidget(QWidget):
             self.quality_requested.emit(title, artist)
             self.lyrics_requested.emit(title, artist, self._cur_album,
                                        float(info.get("duration") or 0))
+            if self._logged_in:
+                self.favorite_requested.emit(title, artist)
         self.c_title.setFullText(title)
         self.e_title.setFullText(title)
         self.c_artist.setFullText(artist)
         self.e_artist.setFullText(artist)
 
+        prev_playing = self._playing
         self._playing = bool(info.get("playing"))
         self._set_play_icon(self._playing)
         self._update_timer()
@@ -1218,6 +1281,8 @@ class NowPlayingWidget(QWidget):
             self._accent_dyn = (self._compute_accent(self._cover_src)
                                 if (config.AUTO_ACCENT and self._cover_src) else None)
             self._apply_accent()
+        elif self._playing != prev_playing and self._cover_src is not None:
+            self._refresh_covers()   # play/pause flipped: apply or lift the dim
 
     def _set_play_icon(self, playing: bool):
         oa = self._effective_on_accent()
@@ -1264,8 +1329,12 @@ class NowPlayingWidget(QWidget):
             self.c_cover.clear()
             self.e_cover.clear()
             return
-        self.c_cover.setPixmap(_rounded_cover(self._cover_src, 64, 12))
-        self.e_cover.setPixmap(_rounded_cover(self._cover_src, 150, 16))
+        c = _rounded_cover(self._cover_src, 64, 12)
+        e = _rounded_cover(self._cover_src, 150, 16)
+        if not self._playing:                 # dim the art while paused
+            c, e = _dim_pixmap(c), _dim_pixmap(e)
+        self.c_cover.setPixmap(c)
+        self.e_cover.setPixmap(e)
 
     # ---- progress ----------------------------------------------------------
     def _tick_progress(self):
@@ -1356,18 +1425,29 @@ class NowPlayingWidget(QWidget):
     # ---- window drag + double-click + context menu -------------------------
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
-            self._drag = e.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self._press_gpos = e.globalPosition().toPoint()
+            self._drag = self._press_gpos - self.frameGeometry().topLeft()
+            self._moved = False
             e.accept()
 
     def mouseMoveEvent(self, e):
         if self._drag is not None and e.buttons() & Qt.LeftButton:
-            self.move(e.globalPosition().toPoint() - self._drag)
+            gp = e.globalPosition().toPoint()
+            if not self._moved:
+                # Ignore tiny jitter so an ordinary click (or double-click)
+                # doesn't nudge the window and rewrite the saved placement.
+                if (gp - self._press_gpos).manhattanLength() < \
+                        QGuiApplication.styleHints().startDragDistance():
+                    return
+                self._moved = True
+            self.move(gp - self._drag)
             e.accept()
 
     def mouseReleaseEvent(self, e):
-        was_dragging = self._drag is not None
+        moved = self._moved
         self._drag = None
-        if was_dragging:
+        self._moved = False
+        if moved:
             self._snap_to_corner(self._nearest_corner())
             try:
                 settings.set_placement(self._current_screen().name(), self._corner)

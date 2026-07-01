@@ -74,6 +74,9 @@ def parse_plain(text):
     return lines
 
 
+_MISSING = object()   # cache sentinel: distinguishes a miss from a cached []
+
+
 class LyricsFetcher(QObject):
     # title, artist, lines.  lines = [(seconds, text), ...] for synced lyrics,
     # [(None, text), ...] for plain (unsynced) lyrics, or [] when none were found.
@@ -82,6 +85,7 @@ class LyricsFetcher(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._cache = {}
+        self._cache_lock = threading.Lock()   # workers run on background threads
 
     def fetch(self, title, artist, album="", duration=0):
         if not title:
@@ -90,9 +94,17 @@ class LyricsFetcher(QObject):
                          args=(title, artist, album, duration), daemon=True).start()
 
     def _worker(self, title, artist, album, duration):
-        key = (title, artist)
-        if key in self._cache:
-            self.lyrics_ready.emit(title, artist, self._cache[key])
+        # Key on album + rounded duration too: two recordings that share a
+        # title/artist (studio vs live, a remaster, a cover) have different
+        # lyrics and timings, so keying on (title, artist) alone served the
+        # wrong ones. pop+reinsert keeps the cache least-recently-used.
+        key = (title, artist, album, int(round(duration or 0)))
+        with self._cache_lock:
+            cached = self._cache.pop(key, _MISSING)
+            if cached is not _MISSING:
+                self._cache[key] = cached      # touch: most-recently-used
+        if cached is not _MISSING:
+            self.lyrics_ready.emit(title, artist, cached)
             return
         try:
             lines = self._lookup(title, artist, album, duration)
@@ -103,9 +115,10 @@ class LyricsFetcher(QObject):
             self.lyrics_ready.emit(title, artist, [])
             return
         # A genuine result (synced, plain, or truly none): cache and report it.
-        if len(self._cache) >= 64:
-            self._cache.pop(next(iter(self._cache)))
-        self._cache[key] = lines
+        with self._cache_lock:
+            if len(self._cache) >= 64:
+                self._cache.pop(next(iter(self._cache)), None)   # evict least-recent
+            self._cache[key] = lines
         self.lyrics_ready.emit(title, artist, lines)
 
     def _lookup(self, title, artist, album, duration):

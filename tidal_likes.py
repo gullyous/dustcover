@@ -32,6 +32,8 @@ try:
 except Exception:  # pragma: no cover - tidalapi optional
     tidalapi = None
 
+_MISSING = object()   # cache sentinel: distinguishes a miss from a cached None
+
 
 def _token_path():
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
@@ -67,12 +69,19 @@ class TidalLiker(QObject):
     like_result = Signal(bool, str, str)  # (success, action, track label)
     #   action in {"added", "removed", "nomatch", "error", "login"}
     quality_result = Signal(str, str, str)  # (title, artist, quality label or "")
+    favorite_state = Signal(str, str, bool)  # (title, artist, is in collection?)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._session = None
         self._lock = threading.Lock()
         self._qcache = {}
+        self._track_cache = {}    # (title, artist) -> resolved Track or None
+        self._cache_lock = threading.Lock()   # guards _track_cache (multi-worker)
+        self._fav_ids = None      # set of favorited track-id strings (lazy, bulk)
+        self._fav_complete = True  # False if the bulk fav fetch hit its page cap
+        self._user_fav = {}       # id str -> bool: this session's own like/unlike
+        self._fav_lock = threading.Lock()
         if tidalapi is not None:
             self._try_load_token()
 
@@ -119,6 +128,7 @@ class TidalLiker(QObject):
             if s.check_login():
                 self._session = s
                 self._save_token(s)
+                self._invalidate_caches()   # this is a fresh session's collection
                 self.login_state.emit(True, "Signed in to TIDAL")
             else:
                 self.login_state.emit(False, "TIDAL sign-in was not completed")
@@ -161,12 +171,38 @@ class TidalLiker(QObject):
                     self._session.user.favorites.remove_track(tid)
                 else:
                     self._session.user.favorites.add_track(tid)
+            # This session's own action is authoritative for that track, even if
+            # the bulk fav set is still loading, stale, or truncated.
+            self._user_fav[str(tid)] = not currently_liked
+            if self._fav_ids is not None:      # keep the cached set in sync too
+                if currently_liked:
+                    self._fav_ids.discard(str(tid))
+                else:
+                    self._fav_ids.add(str(tid))
             self.like_result.emit(True, "removed" if currently_liked else "added", label)
             self._save_token(self._session)    # token may have refreshed
         except Exception:
             self.like_result.emit(False, "error", label)
 
     def _match_track(self, title, artist):
+        # Cache the catalog search so the quality badge, the heart state, and a
+        # like all reuse one network lookup per (title, artist) instead of three.
+        # The lock guards the dict from concurrent quality/favorite/toggle workers.
+        key = (title, artist)
+        with self._cache_lock:
+            cached = self._track_cache.pop(key, _MISSING)
+            if cached is not _MISSING:
+                self._track_cache[key] = cached      # touch: most-recently-used
+        if cached is not _MISSING:
+            return cached
+        t = self._search_track(title, artist)        # network: outside the lock
+        with self._cache_lock:
+            if len(self._track_cache) >= 256:
+                self._track_cache.pop(next(iter(self._track_cache)), None)
+            self._track_cache[key] = t
+        return t
+
+    def _search_track(self, title, artist):
         nt, na = _norm(title), _norm(artist)
         if not nt:
             return None
@@ -184,6 +220,79 @@ class TidalLiker(QObject):
     def _match(self, title, artist):
         t = self._match_track(title, artist)
         return t.id if t is not None else None
+
+    def _invalidate_caches(self):
+        """Drop per-session caches (call on a login transition)."""
+        self._fav_ids = None
+        self._fav_complete = True
+        self._user_fav = {}
+        with self._cache_lock:
+            self._track_cache.clear()
+        self._qcache.clear()
+
+    # ---- favorite state (is the current track already in the collection?) ---
+    def favorite_state_request(self, title, artist):
+        if not title:
+            return
+        threading.Thread(target=self._favorite_worker,
+                         args=(title, artist), daemon=True).start()
+
+    def _favorite_worker(self, title, artist):
+        if self._session is None:
+            self.favorite_state.emit(title, artist, False)
+            return
+        try:
+            ids = self._fav_ids
+            if ids is None:
+                ids = self._load_fav_ids()
+            t = self._match_track(title, artist)   # reuses the cached catalog search
+            if t is None:
+                is_fav = False
+            else:
+                tid = str(t.id)
+                if tid in self._user_fav:          # our own toggle wins, always
+                    is_fav = self._user_fav[tid]
+                elif tid in ids:
+                    is_fav = True
+                elif not self._fav_complete:
+                    return   # bulk set truncated: unknown, don't assert "not liked"
+                else:
+                    is_fav = False
+        except Exception:
+            return   # a tidalapi hiccup leaves the heart as-is; never regress
+        self.favorite_state.emit(title, artist, bool(is_fav))
+
+    def _load_fav_ids(self):
+        """Fetch the user's favorite track ids once (paged) into a set.
+
+        tidalapi has no cheap 'is this favorited?' check, so we page the whole
+        favorites list a single time and keep the id set in memory (updated on
+        every like/unlike). Bounded so a huge collection can't page forever.
+        """
+        with self._fav_lock:
+            if self._fav_ids is not None:
+                return self._fav_ids
+            ids = set()
+            complete = True
+            favs = self._session.user.favorites
+            page, offset, max_pages = 50, 0, 200
+            for _ in range(max_pages):
+                chunk = favs.tracks(limit=page, offset=offset)
+                if not chunk:
+                    break
+                for t in chunk:
+                    try:
+                        ids.add(str(t.id))
+                    except Exception:
+                        pass
+                if len(chunk) < page:
+                    break
+                offset += page
+            else:
+                complete = False   # hit the page cap without reaching the end
+            self._fav_complete = complete
+            self._fav_ids = ids
+            return ids
 
     # ---- quality (best quality the track is available in) ------------------
     def quality(self, title, artist):
