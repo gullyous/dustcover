@@ -5,6 +5,24 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-07-02
+
+### Fixed
+- **The volume slider is instant now.** Every slider movement was paying a full
+  audio-session enumeration (~100ms), so drags backed up for seconds. The audio
+  objects are now cached (values still read live), queued movements collapse to
+  the newest one, and drag events are paced, so changes land immediately.
+- **Clicking the volume groove goes to that position** instead of jumping in
+  coarse steps toward the mouse.
+- **Big volume jumps glide.** Slamming the slider (or clicking far away) ramps
+  the loudness over a fraction of a second instead of stepping abruptly. Drags
+  are unaffected.
+
+### Changed
+- Release pages (and the in-app update dialog) now show what changed in that
+  version instead of a description of the app, and the update dialog renders
+  the notes as clean text.
+
 ## [1.4.2] - 2026-07-02
 
 ### Fixed
