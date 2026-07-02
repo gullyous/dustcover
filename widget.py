@@ -918,6 +918,11 @@ class NowPlayingWidget(QWidget):
         self.e_mute.setToolTip(("Unmute " if self._muted else "Mute ") + scope)
         self.e_vol.setToolTip(f"Volume: {scope}")
         self.c_vol.setToolTip(f"Volume: {scope}")
+        if self.e_vol.isSliderDown() or self.c_vol.isSliderDown():
+            # Never yank a handle the user is holding: above the master ceiling
+            # the read-back is lower than the request, and a mid-drag setValue
+            # would fight every mouse move. The next poll settles it on release.
+            return
         self._vol_updating = True
         v = int(round(max(0.0, min(1.0, level)) * 100))
         self.e_vol.setValue(v)

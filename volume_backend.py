@@ -11,6 +11,11 @@ app is playing (exactly what the Windows Volume Mixer shows per app), with a
 system-master fallback. The followed app is matched by executable name derived
 from config.MATCH_APP ("tidal") plus a browser list (for the TIDAL web player).
 
+The reported level is the EFFECTIVE (audible) volume: the app session scaled by
+the system master. That keeps the widget's slider in step with keyboard volume
+keys and the Windows mixer, which change the master, not the app session.
+Setting the slider adjusts the app session relative to the master ceiling.
+
 All COM work happens on a dedicated background thread with its own COM apartment,
 so it never interferes with the WinRT (winsdk) worker. The whole feature degrades
 gracefully: if pycaw/COM is unavailable, available() is False and the UI hides
@@ -109,7 +114,13 @@ def _pick(source):
 
 def _endpoint():
     spk = AudioUtilities.GetSpeakers()
-    iface = spk.Activate(IAudioEndpointVolume._iid_, 1, None)  # CLSCTX_INPROC_SERVER
+    # Newer pycaw returns an AudioDevice wrapper with the endpoint-volume
+    # interface as a property; older pycaw returns the raw IMMDevice.
+    ev = getattr(spk, "EndpointVolume", None)
+    if ev is not None:
+        return ev
+    dev = getattr(spk, "_dev", spk)
+    iface = dev.Activate(IAudioEndpointVolume._iid_, 1, None)  # CLSCTX_INPROC_SERVER
     return cast(iface, POINTER(IAudioEndpointVolume))
 
 
@@ -117,7 +128,19 @@ def _get_state(source):
     scope, vols = _pick(source)
     if vols:
         v = vols[0]
-        return (float(v.GetMasterVolume()), bool(v.GetMute()), scope)
+        app_level = float(v.GetMasterVolume())
+        app_mute = bool(v.GetMute())
+        try:
+            ep = _endpoint()
+            if ep is not None:
+                # What you HEAR is the app session scaled by the system master.
+                # Reporting the product keeps the slider in step with keyboard
+                # volume keys and the Windows mixer (which change the master).
+                master = float(ep.GetMasterVolumeLevelScalar())
+                return (app_level * master, app_mute or bool(ep.GetMute()), scope)
+        except Exception:
+            pass
+        return (app_level, app_mute, scope)
     ep = _endpoint()
     if ep is not None:
         return (float(ep.GetMasterVolumeLevelScalar()), bool(ep.GetMute()), "System")
@@ -127,8 +150,25 @@ def _get_state(source):
 def _set_volume(source, level):
     scope, vols = _pick(source)
     if vols:
+        target = level
+        try:
+            ep = _endpoint()
+            if ep is not None:
+                master = float(ep.GetMasterVolumeLevelScalar())
+                if master < 0.01:
+                    # Master is (near) zero: no audible target exists, and any
+                    # write would silently pin the app session at 100%. Keep
+                    # the user's stored per-app level until master comes back.
+                    return
+                # Invert the effective mapping: the slider asks for an audible
+                # level, the app session is set relative to the master ceiling
+                # (dragging to 80% with master at 50% pins the app at 100%).
+                target = level / master
+        except Exception:
+            pass
+        target = max(0.0, min(1.0, target))
         for v in vols:
-            v.SetMasterVolume(level, None)
+            v.SetMasterVolume(target, None)
         return
     ep = _endpoint()
     if ep is not None:
@@ -140,6 +180,15 @@ def _set_mute(source, muted):
     if vols:
         for v in vols:
             v.SetMute(1 if muted else 0, None)
+        if not muted:
+            # Unmuting the app is inaudible through a muted master; the click
+            # means "I want sound", so lift a master mute too.
+            try:
+                ep = _endpoint()
+                if ep is not None and ep.GetMute():
+                    ep.SetMute(0, None)
+            except Exception:
+                pass
         return
     ep = _endpoint()
     if ep is not None:
@@ -155,7 +204,7 @@ class VolumeController(QObject):
         self._q = queue.Queue()
         self._stop = False
         self._source = ""
-        self._poll_s = 1.5
+        self._poll_s = 1.0   # snappy enough to follow keyboard volume keys
         self._thread = None
 
     def available(self):
