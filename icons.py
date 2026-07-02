@@ -382,3 +382,46 @@ def tray_icon(accent="#39d6e0", size=64):
         p.end()
         icon.addPixmap(pm)
     return icon
+
+
+def live_tray_icon(cover, playing, frac, accent="#39d6e0"):
+    """Tray icon showing the current album art with an accent progress ring.
+    `cover` is the full-res cover QPixmap; `frac` is track progress 0..1.
+    The cover is dimmed while paused so play state reads even at 16px."""
+    icon = QIcon()
+    frac = 0.0 if frac < 0 else 1.0 if frac > 1 else frac
+    for s in (16, 20, 24, 32, 48):
+        pm = QPixmap(s, s)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        ring_w = max(1.5, s * 0.09)
+        inset = ring_w + max(1.0, s * 0.05)
+        d = s - 2 * inset
+        # rounded cover, center-cropped
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(inset, inset, d, d), d * 0.22, d * 0.22)
+        p.save()
+        p.setClipPath(path)
+        scaled = cover.scaled(int(d), int(d), Qt.KeepAspectRatioByExpanding,
+                              Qt.SmoothTransformation)
+        p.drawPixmap(int(inset) - (scaled.width() - int(d)) // 2,
+                     int(inset) - (scaled.height() - int(d)) // 2, scaled)
+        if not playing:
+            p.fillRect(QRectF(inset, inset, d, d), QColor(0, 0, 0, 130))
+        p.restore()
+        # progress ring: faint track + accent arc, clockwise from 12 o'clock
+        arc_rect = QRectF(ring_w / 2, ring_w / 2, s - ring_w, s - ring_w)
+        pen = QPen(QColor(255, 255, 255, 50))
+        pen.setWidthF(ring_w)
+        pen.setCapStyle(Qt.RoundCap)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawArc(arc_rect, 0, 360 * 16)
+        if frac > 0:
+            pen.setColor(QColor(accent))
+            p.setPen(pen)
+            p.drawArc(arc_rect, 90 * 16, -int(frac * 360 * 16))
+        p.end()
+        icon.addPixmap(pm)
+    return icon

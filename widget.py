@@ -29,6 +29,7 @@ Design:
 """
 
 import os
+import re
 import subprocess
 import time
 import webbrowser
@@ -41,6 +42,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QWidget, QLabel, QPushButton, QFrame, QStackedWidget, QSizePolicy, QSlider,
     QHBoxLayout, QVBoxLayout, QMenu, QSystemTrayIcon, QGraphicsDropShadowEffect,
+    QFileDialog,
 )
 
 import config
@@ -144,6 +146,7 @@ class ProgressLine(QWidget):
         self._seekable = False
         self._dragging = False
         self.accent = config.ACCENT
+        self.accent2 = None   # optional second color: duotone gradient fill
         self.setFixedHeight(14)
 
     def set_seekable(self, ok: bool):
@@ -177,7 +180,15 @@ class ProgressLine(QWidget):
         if self._frac > 0:
             fill = QRectF(track)
             fill.setWidth(max(self.BAR_H, fx))
-            p.setBrush(QColor(self.accent))
+            if self.accent2:
+                # duotone: gradient spans the FULL track, so the visible fill
+                # reveals more of the second color as the song progresses
+                grad = QLinearGradient(track.topLeft(), track.topRight())
+                grad.setColorAt(0.0, QColor(self.accent))
+                grad.setColorAt(1.0, QColor(self.accent2))
+                p.setBrush(grad)
+            else:
+                p.setBrush(QColor(self.accent))
             p.drawRoundedRect(fill, rad, rad)
         if self._seekable:
             kr = 5
@@ -228,8 +239,15 @@ class LyricsView(QWidget):
         self._msg = ""
         self._scroll = 0.0    # px scroll position for plain (unsynced) lyrics
         self._last_sec = None  # last playback position seen (re-highlight on nudge)
+        self._last_mono = None  # monotonic stamp of _last_sec, for extrapolation
+        self._advancing = False  # playback running -> extrapolate + animate wipe
         self._offset = float(getattr(config, "LYRICS_OFFSET", 0.0) or 0.0)
         self.accent = config.ACCENT
+        # smooth karaoke wipe: repaint ~20fps, but only while synced lyrics are
+        # visible AND playing (same spirit as the widget's gated progress timer)
+        self._anim = QTimer(self)
+        self._anim.setInterval(50)
+        self._anim.timeout.connect(self.update)
         self.setCursor(Qt.PointingHandCursor)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setToolTip("Scroll to nudge lyric sync • middle-click to reset")
@@ -241,6 +259,7 @@ class LyricsView(QWidget):
         self._scroll = 0.0
         self._msg = "" if self._lines else "No lyrics for this track"
         self.setCursor(Qt.PointingHandCursor if self._synced else Qt.ArrowCursor)
+        self._update_anim()
         self.update()
 
     def set_loading(self):
@@ -248,13 +267,50 @@ class LyricsView(QWidget):
         self._synced = False
         self._active = -1
         self._msg = "Finding lyrics..."
+        self._update_anim()
         self.update()
 
     def has_lyrics(self):
         return bool(self._lines)
 
+    def set_playing(self, playing):
+        """Playback state, so the wipe extrapolates between 200ms ticks."""
+        playing = bool(playing)
+        if playing == self._advancing:
+            return
+        # re-anchor so a pause doesn't freeze mid-extrapolation drift
+        self._last_sec = self._now_eff() - self._offset
+        self._last_mono = time.monotonic()
+        self._advancing = playing
+        self._update_anim()
+        self.update()
+
+    def _update_anim(self):
+        if self._synced and self._advancing and self.isVisible() and self._lines:
+            if not self._anim.isActive():
+                self._anim.start()
+        elif self._anim.isActive():
+            self._anim.stop()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._update_anim()
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self._update_anim()
+
+    def _now_eff(self):
+        """Current effective lyric time: last known position, extrapolated while
+        playing, plus the user's sync offset."""
+        base = self._last_sec if self._last_sec is not None else 0.0
+        if self._advancing and self._last_mono is not None:
+            base += time.monotonic() - self._last_mono
+        return base + self._offset
+
     def set_position(self, sec):
         self._last_sec = sec
+        self._last_mono = time.monotonic()
         if not self._synced:
             return
         eff = sec + self._offset
@@ -364,8 +420,27 @@ class LyricsView(QWidget):
                 p.drawText(box, Qt.AlignRight | Qt.AlignTop, "scroll to sync")
         p.end()
 
+    WIPE_MAX = 8.0   # cap the wipe duration so instrumental gaps hold at full
+    DOTS_LEAD = 5.0  # countdown dots appear this many seconds before a line
+    DOTS_GAP = 6.0   # ...but only for gaps at least this long
+
+    def _wipe_frac(self, eff):
+        """0..1 fill of the active line, interpolated to the next line's time."""
+        act = self._active
+        if act < 0:
+            return 0.0
+        t0 = self._lines[act][0]
+        t1 = None
+        if act + 1 < len(self._lines):
+            t1 = self._lines[act + 1][0]
+        dur = (t1 - t0) if t1 is not None else 5.0
+        dur = max(0.5, min(dur, self.WIPE_MAX))
+        frac = (eff - t0) / dur
+        return 0.0 if frac < 0 else 1.0 if frac > 1 else frac
+
     def _paint_synced(self, p, w, h):
         cy = h / 2
+        eff = self._now_eff()
         act = self._active if self._active >= 0 else 0
         for i, (_t, txt) in enumerate(self._lines):
             y = cy + (i - act) * self.LINE_H
@@ -373,7 +448,6 @@ class LyricsView(QWidget):
                 continue
             f = p.font()
             if i == self._active:
-                p.setPen(QColor(self.accent))
                 f.setPointSize(15)
                 f.setBold(True)
             else:
@@ -383,9 +457,55 @@ class LyricsView(QWidget):
                 f.setPointSize(12)
                 f.setBold(False)
             p.setFont(f)
-            line = QFontMetrics(f).elidedText(txt, Qt.ElideRight, w - 24)
-            p.drawText(QRectF(12, y - self.LINE_H / 2, w - 24, self.LINE_H),
-                       Qt.AlignCenter, line)
+            fm = QFontMetrics(f)
+            line = fm.elidedText(txt, Qt.ElideRight, w - 24)
+            rect = QRectF(12, y - self.LINE_H / 2, w - 24, self.LINE_H)
+            if i != self._active:
+                p.drawText(rect, Qt.AlignCenter, line)
+                continue
+            # active line: white base, then an accent "karaoke wipe" clipped to
+            # the sung fraction (interpolated between this and the next line)
+            p.setPen(QColor(255, 255, 255, 235))
+            p.drawText(rect, Qt.AlignCenter, line)
+            frac = self._wipe_frac(eff)
+            if frac > 0:
+                textw = fm.horizontalAdvance(line)
+                left = 12 + (w - 24 - textw) / 2
+                p.save()
+                p.setClipRect(QRectF(left, rect.top(), textw * frac, self.LINE_H))
+                p.setPen(QColor(self.accent))
+                p.drawText(rect, Qt.AlignCenter, line)
+                p.restore()
+        self._paint_countdown(p, w, cy, eff)
+
+    def _paint_countdown(self, p, w, cy, eff):
+        """Three draining dots during long instrumental gaps, so you know when
+        the next line lands (visible only in the last DOTS_LEAD seconds)."""
+        act = self._active
+        nxt = act + 1 if act >= 0 else 0
+        if nxt >= len(self._lines):
+            return
+        # only during a real gap: intro (no active line), a blank timed line,
+        # or a long stretch between the active line and the next one
+        gap_start = self._lines[act][0] if act >= 0 else 0.0
+        t_next = self._lines[nxt][0]
+        if t_next is None or t_next - gap_start < self.DOTS_GAP:
+            return
+        if act >= 0 and self._lines[act][1] and t_next - gap_start < 12.0:
+            return   # a sung line followed by a shortish gap: no dots
+        remaining = t_next - eff
+        if not (0.0 < remaining <= self.DOTS_LEAD):
+            return
+        lit = min(3, max(1, int(remaining / self.DOTS_LEAD * 3) + 1))
+        r = 4.0
+        gap = 18.0
+        x0 = w / 2 - gap
+        y = cy - self.LINE_H * 1.6
+        p.setPen(Qt.NoPen)
+        for i in range(3):
+            c = QColor(self.accent) if i < lit else QColor(255, 255, 255, 60)
+            p.setBrush(c)
+            p.drawEllipse(QPointF(x0 + i * gap, y), r, r)
 
     def _paint_plain(self, p, w, h):
         f = p.font(); f.setPointSize(12); f.setBold(False); p.setFont(f)
@@ -483,6 +603,8 @@ class NowPlayingWidget(QWidget):
     settings_requested = Signal()
     quality_requested = Signal(str, str)   # title, artist (request "available in" quality)
     favorite_requested = Signal(str, str)  # title, artist (request real liked state)
+    cover_requested = Signal(str, str)     # title, artist (request full-res cover)
+    radio_requested = Signal(str, str)     # title, artist (request track-radio mix)
     check_updates_requested = Signal()     # tray "Check for updates..." (loud check)
     volume_changed = Signal(float)         # 0.0-1.0, from the volume slider
     mute_toggled = Signal(bool)            # desired mute state
@@ -514,6 +636,11 @@ class NowPlayingWidget(QWidget):
         self._muted = False         # current app/system mute (from volume backend)
         self._vol_updating = False  # guard: ignore slider signals during programmatic set
         self._accent_dyn = None     # accent tinted from album art (auto-accent)
+        self._accent2_dyn = None    # second sampled color (duotone gradient)
+        self._auto_hidden = False   # hidden by game mode, not by the user
+        self._cover_hires = False   # full-res TIDAL cover applied for this track
+        self._cover_bytes = None    # raw bytes of that cover (for "Save cover art")
+        self._tray_icon_state = None  # throttle for the live tray icon
         self._lyrics_mode = False   # lyrics panel showing in the expanded view
         self._shuffle = False
         self._repeat = 0   # 0 none, 1 track, 2 list
@@ -803,6 +930,13 @@ class NowPlayingWidget(QWidget):
             return self._accent_dyn
         return config.ACCENT
 
+    def _effective_accent2(self):
+        """Second duotone color: sampled from the art when available, otherwise
+        a lightened variant of the primary so the gradient is always subtle."""
+        if config.AUTO_ACCENT and self._accent2_dyn:
+            return self._accent2_dyn
+        return QColor(self._effective_accent()).lighter(135).name()
+
     def _on_accent_color(self, hexcolor):
         c = QColor(hexcolor)
         lum = 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
@@ -811,12 +945,22 @@ class NowPlayingWidget(QWidget):
     def _effective_on_accent(self):
         return self._on_accent_color(self._effective_accent())
 
-    def _compute_accent(self, pm):
-        """Pick a vivid accent from the album art, or None if too monochrome."""
+    @staticmethod
+    def _boost(color):
+        """Push a sampled color into legible-accent territory."""
+        h, s, v, _a = color.getHsv()
+        return QColor.fromHsv(h, min(255, max(s, 150)),
+                              min(255, max(v, 175))).name()
+
+    def _compute_accents(self, pm):
+        """Pick up to two vivid accents from the album art: the strongest color,
+        plus the strongest one at least 60 degrees of hue away (duotone).
+        Returns (primary_or_None, secondary_or_None)."""
         try:
             img = pm.toImage().scaled(24, 24, Qt.IgnoreAspectRatio,
                                       Qt.SmoothTransformation)
-            best, best_score = None, -1.0
+            # best-scoring candidate per 30-degree hue bucket
+            bins = {}   # bucket -> (score, QColor, hue)
             for y in range(img.height()):
                 for x in range(img.width()):
                     c = img.pixelColor(x, y)
@@ -824,20 +968,30 @@ class NowPlayingWidget(QWidget):
                     if h < 0 or v < 60 or v > 245:
                         continue
                     score = (s / 255.0) * (v / 255.0)
-                    if score > best_score:
-                        best_score, best = score, c
-            if best is None or best_score < 0.12:
-                return None
-            h, s, v, _a = best.getHsv()
-            return QColor.fromHsv(h, min(255, max(s, 150)),
-                                  min(255, max(v, 175))).name()
+                    b = h // 30
+                    if b not in bins or score > bins[b][0]:
+                        bins[b] = (score, c, h)
+            ranked = sorted(bins.values(), key=lambda t: -t[0])
+            ranked = [r for r in ranked if r[0] >= 0.12]
+            if not ranked:
+                return None, None
+            primary = ranked[0]
+            secondary = None
+            for cand in ranked[1:]:
+                d = abs(cand[2] - primary[2])
+                if min(d, 360 - d) >= 60:
+                    secondary = cand
+                    break
+            return (self._boost(primary[1]),
+                    self._boost(secondary[1]) if secondary else None)
         except Exception:
-            return None
+            return None, None
 
     def _apply_accent(self):
         """Push the effective accent through every accent-colored element."""
         acc = self._effective_accent()
         self.progress.accent = acc
+        self.progress.accent2 = self._effective_accent2()
         self.progress.update()
         self.e_lyrics.accent = acc
         self.e_lyrics.update()
@@ -846,9 +1000,13 @@ class NowPlayingWidget(QWidget):
         self._apply_style()
         self._set_play_icon(self._playing)
         self._refresh_shuffle_repeat()
+        self._refresh_tray_icon()   # ring color follows the accent
 
     def _apply_style(self):
         acc = self._effective_accent()
+        acc2 = self._effective_accent2()
+        grad = (f"qlineargradient(x1:0, y1:0, x2:1, y2:1, "
+                f"stop:0 {acc}, stop:1 {acc2})")
         self.setStyleSheet(f"""
             QLabel#title      {{ color:{INK}; font-size:13px; font-weight:600; }}
             QLabel#title_big  {{ color:{INK}; font-size:16px; font-weight:700; }}
@@ -861,14 +1019,14 @@ class NowPlayingWidget(QWidget):
             QPushButton {{ border:none; background:rgba(255,255,255,0.10); }}
             QPushButton:hover   {{ background:rgba(255,255,255,0.20); }}
             QPushButton:pressed {{ background:rgba(255,255,255,0.32); }}
-            QPushButton[accent="true"]         {{ background:{acc}; }}
-            QPushButton[accent="true"]:hover   {{ background:{acc}; }}
-            QPushButton[accent="true"]:pressed {{ background:{acc}; }}
+            QPushButton[accent="true"]         {{ background:{grad}; }}
+            QPushButton[accent="true"]:hover   {{ background:{grad}; }}
+            QPushButton[accent="true"]:pressed {{ background:{grad}; }}
             QPushButton:disabled {{ background:rgba(255,255,255,0.04); }}
             QPushButton[accent="true"]:disabled {{ background:rgba(255,255,255,0.10); }}
             QSlider::groove:horizontal {{ height:4px; background:rgba(255,255,255,0.18);
                                           border-radius:2px; }}
-            QSlider::sub-page:horizontal {{ background:{acc}; border-radius:2px; }}
+            QSlider::sub-page:horizontal {{ background:{grad}; border-radius:2px; }}
             QSlider::add-page:horizontal {{ background:rgba(255,255,255,0.18);
                                             border-radius:2px; }}
             QSlider::handle:horizontal {{ width:12px; height:12px; margin:-4px 0;
@@ -886,12 +1044,17 @@ class NowPlayingWidget(QWidget):
             flags |= Qt.WindowStaysOnTopHint
         was_visible = self.isVisible()
         self.setWindowFlags(flags)          # note: this hides the window
-        self._accent_dyn = (self._compute_accent(self._cover_src)
-                            if (config.AUTO_ACCENT and self._cover_src) else None)
+        if config.AUTO_ACCENT and self._cover_src:
+            self._accent_dyn, self._accent2_dyn = \
+                self._compute_accents(self._cover_src)
+        else:
+            self._accent_dyn = self._accent2_dyn = None
         self._apply_accent()                # picks up the new / auto accent color
         self._refresh_heart()
         self.card.update()
         self.progress.update()
+        self._tray_icon_state = None   # LIVE_TRAY may have been toggled
+        self._refresh_tray_icon()
         if was_visible:
             self._show_widget()
             self._snap_to_corner()
@@ -939,9 +1102,16 @@ class NowPlayingWidget(QWidget):
         act_web = QAction("TIDAL web player", self)
         act_web.triggered.connect(self._open_web_player)
         menu.addAction(act_web)
+        self.act_radio = QAction("Track radio (more like this)", self)
+        self.act_radio.setToolTip("Open a TIDAL mix seeded from the playing track")
+        self.act_radio.triggered.connect(self._on_radio_clicked)
+        menu.addAction(self.act_radio)
         act_copy = QAction("Copy now playing", self)
         act_copy.triggered.connect(self._copy_now_playing)
         menu.addAction(act_copy)
+        self.act_save_cover = QAction("Save cover art...", self)
+        self.act_save_cover.triggered.connect(self._save_cover)
+        menu.addAction(self.act_save_cover)
         menu.addSeparator()
 
         act_check_updates = QAction("Check for updates...", self)
@@ -973,6 +1143,8 @@ class NowPlayingWidget(QWidget):
         if not self.tray:
             return
         self.act_signin.setVisible(not self._logged_in)
+        self.act_radio.setEnabled(self._logged_in and bool(self._cur_title))
+        self.act_save_cover.setEnabled(self._cover_src is not None)
         self.act_visibility.setText("Hide widget" if self.isVisible() else "Show widget")
         self.act_mode.setText("Compact" if self._expanded else "Expand")
         self.act_play.setText("Pause" if self._playing else "Play")
@@ -986,11 +1158,16 @@ class NowPlayingWidget(QWidget):
 
     def _toggle_visibility(self):
         if self.isVisible():
-            self.hide()
+            self._hide_widget()
         else:
             self._show_widget()
 
+    def _hide_widget(self):
+        self._auto_hidden = False   # a manual hide overrides game mode
+        self.hide()
+
     def _show_widget(self):
+        self._auto_hidden = False   # showing means it's no longer auto-hidden
         self.show()
         self.raise_()
         self.activateWindow()
@@ -1004,6 +1181,49 @@ class NowPlayingWidget(QWidget):
         else:
             self.act_track.setText("Nothing playing")
             self.tray.setToolTip("Tidal Now Playing")
+
+    def _refresh_tray_icon(self):
+        """Live tray icon: cover + accent progress ring, throttled so the icon
+        is only re-rendered when something visible about it changed."""
+        if not getattr(self, "tray", None):
+            return
+        live = (getattr(config, "LIVE_TRAY", True)
+                and self._cover_src is not None and self._dur > 0)
+        if not live:
+            if self._tray_icon_state is not None:
+                self._tray_icon_state = None
+                self.tray.setIcon(icons.tray_icon(self._effective_accent()))
+            return
+        frac = min(1.0, max(0.0, self._pos / self._dur))
+        state = (id(self._cover_src), self._playing,
+                 int(frac * 24), self._effective_accent())
+        if state == self._tray_icon_state:
+            return
+        self._tray_icon_state = state
+        self.tray.setIcon(icons.live_tray_icon(
+            self._cover_src, self._playing, frac, self._effective_accent()))
+
+    # ---- game mode (auto-hide while a fullscreen app runs) -------------------
+    def on_fullscreen(self, fullscreen):
+        if not getattr(config, "HIDE_ON_FULLSCREEN", True):
+            return
+        if fullscreen and self.isVisible():
+            self._auto_hidden = True
+            self.hide()
+        elif not fullscreen and self._auto_hidden:
+            self._auto_hidden = False
+            self._show_widget()
+
+    # ---- track radio ---------------------------------------------------------
+    def _on_radio_clicked(self):
+        if self._cur_title and self._logged_in:
+            self.radio_requested.emit(self._cur_title, self._cur_artist)
+
+    def on_radio(self, title, artist, mix_id):
+        if (title, artist) != (self._cur_title, self._cur_artist):
+            return  # stale result for a track that already changed
+        if mix_id:
+            self._open_web_player(f"{WEB_PLAYER_URL}/mix/{mix_id}")
 
     # ---- likes / TIDAL -----------------------------------------------------
     def _on_heart(self):
@@ -1067,6 +1287,7 @@ class NowPlayingWidget(QWidget):
         if self._logged_in and self._cur_title:
             self.quality_requested.emit(self._cur_title, self._cur_artist)
             self.favorite_requested.emit(self._cur_title, self._cur_artist)
+            self.cover_requested.emit(self._cur_title, self._cur_artist)
 
     def on_quality(self, title, artist, label):
         if (title, artist) != (self._cur_title, self._cur_artist):
@@ -1140,10 +1361,12 @@ class NowPlayingWidget(QWidget):
             text = f"{self._cur_artist} - {self._cur_title}".strip(" -")
             QGuiApplication.clipboard().setText(text)
 
-    def _open_web_player(self):
+    def _open_web_player(self, url=None):
         # Open TIDAL's web player as a chromeless browser "app window": it acts
         # like a dedicated popup, plays fine (the browser has the Widevine DRM a
         # Qt web view lacks), and its media session shows up in this widget.
+        if not isinstance(url, str) or not url:
+            url = WEB_PLAYER_URL   # also swallows QAction.triggered's bool arg
         pf = os.environ.get("ProgramFiles", r"C:\Program Files")
         pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
         local = os.environ.get("LOCALAPPDATA", "")
@@ -1157,17 +1380,17 @@ class NowPlayingWidget(QWidget):
         for exe in candidates:
             if exe and os.path.exists(exe):
                 try:
-                    subprocess.Popen([exe, f"--app={WEB_PLAYER_URL}",
+                    subprocess.Popen([exe, f"--app={url}",
                                       "--window-size=480,800"])
                     return
                 except Exception:
                     pass
         # Fallback: the default browser (a normal tab).
         try:
-            webbrowser.open(WEB_PLAYER_URL)
+            webbrowser.open(url)
         except Exception:
             try:
-                os.startfile(WEB_PLAYER_URL)
+                os.startfile(url)
             except Exception:
                 pass
 
@@ -1227,7 +1450,9 @@ class NowPlayingWidget(QWidget):
             self.e_lyrics_btn.hide()
             if self._lyrics_mode:
                 self._set_lyrics_mode(False)
+            self.e_lyrics.set_playing(False)
             self._update_tray(None, None, available=False)
+            self._refresh_tray_icon()   # falls back to the brand mark
             return
 
         title = info.get("title") or "Unknown title"
@@ -1236,6 +1461,8 @@ class NowPlayingWidget(QWidget):
         if track_changed:
             self._liked = False        # a new track starts unliked in the UI
             self._heart_user_owned = False   # ground-truth may set the heart again
+            self._cover_hires = False  # SMTC thumbnail owns the art again
+            self._cover_bytes = None
             self.e_quality.hide()      # clear the quality badge until it resolves
             for b in (self.c_lyrics_btn, self.e_lyrics_btn):
                 b.show()
@@ -1251,6 +1478,7 @@ class NowPlayingWidget(QWidget):
                                        float(info.get("duration") or 0))
             if self._logged_in:
                 self.favorite_requested.emit(title, artist)
+                self.cover_requested.emit(title, artist)
         self.c_title.setFullText(title)
         self.e_title.setFullText(title)
         self.c_artist.setFullText(artist)
@@ -1260,6 +1488,7 @@ class NowPlayingWidget(QWidget):
         self._playing = bool(info.get("playing"))
         self._set_play_icon(self._playing)
         self._update_timer()
+        self.e_lyrics.set_playing(self._playing)   # karaoke wipe extrapolation
         self._update_tray(title, artist, available=True)
         self._apply_caps(info)
 
@@ -1269,6 +1498,16 @@ class NowPlayingWidget(QWidget):
         self._update_progress(self._pos)
 
         if info.get("art_changed"):
+            if self._cover_hires:
+                # The backend keys art on (title, artist, album): new art with
+                # the hires flag still set means the ALBUM changed under the
+                # same title/artist (single vs album cut), so the old full-res
+                # cover is stale. Otherwise the flag blocks SMTC-thumbnail
+                # downgrades between track changes (it is reset on track change).
+                self._cover_hires = False
+                self._cover_bytes = None
+                if self._logged_in and not track_changed:
+                    self.cover_requested.emit(title, artist)
             art = info.get("art")
             if art:
                 pm = QPixmap()
@@ -1276,13 +1515,57 @@ class NowPlayingWidget(QWidget):
                 self._cover_src = pm if not pm.isNull() else None
             else:
                 self._cover_src = None
-            self.card.set_ambient(self._cover_src)
-            self._refresh_covers()
-            self._accent_dyn = (self._compute_accent(self._cover_src)
-                                if (config.AUTO_ACCENT and self._cover_src) else None)
-            self._apply_accent()
+            self._apply_cover()
         elif self._playing != prev_playing and self._cover_src is not None:
             self._refresh_covers()   # play/pause flipped: apply or lift the dim
+        self._refresh_tray_icon()
+
+    def _apply_cover(self):
+        """Push self._cover_src through ambience, covers, accents, and tray."""
+        self.card.set_ambient(self._cover_src)
+        self._refresh_covers()
+        if config.AUTO_ACCENT and self._cover_src:
+            self._accent_dyn, self._accent2_dyn = \
+                self._compute_accents(self._cover_src)
+        else:
+            self._accent_dyn = self._accent2_dyn = None
+        self._apply_accent()
+
+    def on_cover_hires(self, title, artist, data):
+        if (title, artist) != (self._cur_title, self._cur_artist):
+            return  # stale result for a track that already changed
+        pm = QPixmap()
+        pm.loadFromData(data)
+        if pm.isNull():
+            return
+        if self._cover_src is not None and pm.width() <= self._cover_src.width():
+            return  # not actually an upgrade
+        self._cover_src = pm
+        self._cover_bytes = bytes(data)
+        self._cover_hires = True
+        self._apply_cover()
+
+    def _save_cover(self):
+        # Snapshot first: the modal dialog runs a nested event loop, so the
+        # track (and with it _cover_src/_cover_bytes) can change while it's open.
+        pm = self._cover_src
+        data = self._cover_bytes
+        if pm is None:
+            return
+        base = f"{self._cur_artist} - {self._cur_album or self._cur_title}".strip(" -")
+        base = re.sub(r'[<>:"/\\|?*]', "_", base) or "cover"
+        path, _f = QFileDialog.getSaveFileName(
+            self, "Save cover art", base + ".jpg", "Images (*.jpg *.png)")
+        if not path:
+            return
+        try:
+            if data and path.lower().endswith(".jpg"):
+                with open(path, "wb") as f:
+                    f.write(data)   # original full-res bytes
+            else:
+                pm.save(path)
+        except Exception:
+            pass
 
     def _set_play_icon(self, playing: bool):
         oa = self._effective_on_accent()
@@ -1472,9 +1755,17 @@ class NowPlayingWidget(QWidget):
         act_web = QAction("TIDAL web player", self)
         act_web.triggered.connect(self._open_web_player)
         menu.addAction(act_web)
+        act_radio = QAction("Track radio (more like this)", self)
+        act_radio.setEnabled(self._logged_in and bool(self._cur_title))
+        act_radio.triggered.connect(self._on_radio_clicked)
+        menu.addAction(act_radio)
         act_copy = QAction("Copy now playing", self)
         act_copy.triggered.connect(self._copy_now_playing)
         menu.addAction(act_copy)
+        act_cover = QAction("Save cover art...", self)
+        act_cover.setEnabled(self._cover_src is not None)
+        act_cover.triggered.connect(self._save_cover)
+        menu.addAction(act_cover)
         if not self._logged_in:
             act_signin = QAction("Sign in to TIDAL", self)
             act_signin.setToolTip(SIGNIN_HINT)
@@ -1489,7 +1780,7 @@ class NowPlayingWidget(QWidget):
         menu.addAction(act_mode)
         if self.tray:
             act_hide = QAction("Hide widget", self)
-            act_hide.triggered.connect(self.hide)
+            act_hide.triggered.connect(self._hide_widget)
             menu.addAction(act_hide)
         menu.addSeparator()
         act_settings = QAction("Settings...", self)

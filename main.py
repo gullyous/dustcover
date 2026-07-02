@@ -9,12 +9,16 @@ them together. Run via run.bat (or `python main.py`).
 """
 
 import sys
+import time
 
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication
 
 import config
 import icons
 import settings
+from fullscreen_watch import FullscreenWatcher
 from hotkeys import HotkeyManager
 from lyrics_backend import LyricsFetcher
 from media_backend import MediaWorker
@@ -24,6 +28,44 @@ from updater import Updater, maybe_run_helper, sweep_leftovers
 from volume_backend import VolumeController
 from widget import NowPlayingWidget
 
+# ---- single instance + CLI verbs (Stream Deck / AutoHotkey friendly) --------
+# `TidalNowPlaying.exe --cmd next` forwards a verb to the running widget over a
+# local socket and exits. A bare second launch just surfaces the widget.
+CMD_SERVER_NAME = "TidalNowPlaying-cmd"
+CMD_VERBS = ("playpause", "next", "prev", "like", "show", "hide",
+             "toggle", "expand")
+
+
+def _cli_verb(argv):
+    """The --cmd verb from argv, '' if malformed, None if not a cmd launch."""
+    if "--cmd" not in argv:
+        return None
+    i = argv.index("--cmd")
+    if i + 1 >= len(argv):
+        return ""
+    v = argv[i + 1].strip().lower()
+    return v if v in CMD_VERBS else ""
+
+
+def _forward_cmd(verb):
+    """Send a verb to an already-running instance. True if one answered."""
+    sock = QLocalSocket()
+    sock.connectToServer(CMD_SERVER_NAME)
+    if not sock.waitForConnected(400):
+        return False
+    sock.write((verb + "\n").encode("utf-8"))
+    sock.flush()
+    sock.disconnectFromServer()
+    # On Windows the pipe write completes via the event loop, NOT waitFor*:
+    # pump until the close handshake finishes so the verb actually lands
+    # (disconnectFromServer holds the socket in ClosingState until flushed).
+    deadline = time.time() + 1.0
+    while (sock.state() != QLocalSocket.LocalSocketState.UnconnectedState
+           and time.time() < deadline):
+        QCoreApplication.processEvents()
+        time.sleep(0.005)
+    return True
+
 
 def main():
     # If we were re-launched as the self-update swap helper, do the swap and
@@ -31,6 +73,25 @@ def main():
     if maybe_run_helper():
         return
     app = QApplication(sys.argv)
+
+    # --cmd launches never start a second widget: forward the verb and exit.
+    verb = _cli_verb(sys.argv)
+    if verb is not None:
+        if verb:
+            _forward_cmd(verb)
+        else:
+            print("usage: --cmd " + "|".join(CMD_VERBS))
+        return
+    # Bare relaunch while an instance is running: surface it and exit.
+    if _forward_cmd("show"):
+        return
+    QLocalServer.removeServer(CMD_SERVER_NAME)   # clear a stale pipe (crash)
+    cmd_server = QLocalServer()
+    if not cmd_server.listen(CMD_SERVER_NAME):
+        # Not fatal: the widget runs fine, only --cmd control is unavailable.
+        print(f"[cmd] could not listen on {CMD_SERVER_NAME}: "
+              f"{cmd_server.errorString()}")
+
     settings.load_into_config()   # apply any saved overrides before building the UI
     app.setApplicationName("Tidal Now Playing")
     # Brand the running process: tray, taskbar and alt-tab all show the "E"
@@ -67,7 +128,48 @@ def main():
     liker.quality_result.connect(widget.on_quality)
     widget.favorite_requested.connect(liker.favorite_state_request)
     liker.favorite_state.connect(widget.on_favorite_state)
+    widget.cover_requested.connect(liker.fetch_cover)     # full-res album art
+    liker.cover_ready.connect(widget.on_cover_hires)
+    widget.radio_requested.connect(liker.radio)           # "more like this"
+    liker.radio_result.connect(widget.on_radio)
     widget.on_login_state(liker.signed_in(), "")  # hide "Sign in" if already signed in
+
+    # game mode: hide while a fullscreen app owns the widget's monitor
+    fs_watch = FullscreenWatcher(lambda: int(widget.winId()))
+    fs_watch.fullscreen_changed.connect(widget.on_fullscreen)
+    fs_watch.start()
+
+    # dispatch CLI verbs forwarded by later `--cmd` launches
+    def _dispatch_cmd(v):
+        actions = {
+            "playpause": worker.play_pause,
+            "next": worker.next_track,
+            "prev": worker.prev_track,
+            "like": widget._on_heart,
+            "show": widget._show_widget,
+            "hide": widget._hide_widget,   # owns the game-mode auto-hide flag
+            "toggle": widget._toggle_visibility,
+            "expand": widget.toggle_mode,
+        }
+        fn = actions.get(v)
+        if fn:
+            fn()
+
+    def _on_cmd_connection():
+        conn = cmd_server.nextPendingConnection()
+        if conn is None:
+            return
+        def _read():
+            data = bytes(conn.readAll()).decode("utf-8", "ignore")
+            for v in data.split("\n"):
+                v = v.strip().lower()
+                if v:
+                    _dispatch_cmd(v)
+        conn.readyRead.connect(_read)
+        conn.disconnected.connect(conn.deleteLater)   # don't accumulate sockets
+        if conn.bytesAvailable():
+            _read()   # data can land before the slot is connected
+    cmd_server.newConnection.connect(_on_cmd_connection)
 
     # synced lyrics (LRCLIB, free / keyless)
     lyrics = LyricsFetcher()
@@ -170,6 +272,8 @@ def main():
     # clean shutdown: stop + join the worker thread (closing its asyncio loop)
     # and stop the hotkey listener before the app exits.
     def _cleanup():
+        fs_watch.stop()
+        cmd_server.close()
         updater.stop()
         volume.stop()
         worker.stop()

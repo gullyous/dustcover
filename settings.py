@@ -31,6 +31,8 @@ FIELDS = {
     "window_opacity": ("WINDOW_OPACITY", float),
     "always_on_top": ("ALWAYS_ON_TOP", bool),
     "start_expanded": ("START_EXPANDED", bool),
+    "hide_fullscreen": ("HIDE_ON_FULLSCREEN", bool),
+    "live_tray": ("LIVE_TRAY", bool),
     "fallback_any": ("FALLBACK_TO_ANY", bool),
     "poll_ms": ("POLL_MS", int),
     "hotkeys_enabled": ("HOTKEYS_ENABLED", bool),

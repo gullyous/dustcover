@@ -23,7 +23,9 @@ is reported as "nomatch" rather than guessed.
 import json
 import os
 import re
+import ssl
 import threading
+import urllib.request
 
 from PySide6.QtCore import QObject, Signal
 
@@ -70,6 +72,8 @@ class TidalLiker(QObject):
     #   action in {"added", "removed", "nomatch", "error", "login"}
     quality_result = Signal(str, str, str)  # (title, artist, quality label or "")
     favorite_state = Signal(str, str, bool)  # (title, artist, is in collection?)
+    radio_result = Signal(str, str, str)     # (title, artist, mix id or "")
+    cover_ready = Signal(str, str, bytes)    # (title, artist, full-res cover bytes)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -77,7 +81,8 @@ class TidalLiker(QObject):
         self._lock = threading.Lock()
         self._qcache = {}
         self._track_cache = {}    # (title, artist) -> resolved Track or None
-        self._cache_lock = threading.Lock()   # guards _track_cache (multi-worker)
+        self._cover_cache = {}    # album id str -> full-res cover bytes
+        self._cache_lock = threading.Lock()   # guards _track_cache/_cover_cache
         self._fav_ids = None      # set of favorited track-id strings (lazy, bulk)
         self._fav_complete = True  # False if the bulk fav fetch hit its page cap
         self._user_fav = {}       # id str -> bool: this session's own like/unlike
@@ -228,6 +233,7 @@ class TidalLiker(QObject):
         self._user_fav = {}
         with self._cache_lock:
             self._track_cache.clear()
+            self._cover_cache.clear()
         self._qcache.clear()
 
     # ---- favorite state (is the current track already in the collection?) ---
@@ -293,6 +299,63 @@ class TidalLiker(QObject):
             self._fav_complete = complete
             self._fav_ids = ids
             return ids
+
+    # ---- track radio ("more like this") --------------------------------------
+    def radio(self, title, artist):
+        if not title:
+            return
+        threading.Thread(target=self._radio_worker,
+                         args=(title, artist), daemon=True).start()
+
+    def _radio_worker(self, title, artist):
+        mix_id = ""
+        if self._session is not None:
+            try:
+                t = self._match_track(title, artist)
+                if t is not None:
+                    mix = t.get_radio_mix()
+                    mix_id = str(getattr(mix, "id", "") or "")
+            except Exception:
+                mix_id = ""   # no mix for this track / transient API failure
+        self.radio_result.emit(title, artist, mix_id)
+
+    # ---- full-res cover art ---------------------------------------------------
+    def fetch_cover(self, title, artist):
+        if not title:
+            return
+        threading.Thread(target=self._cover_worker,
+                         args=(title, artist), daemon=True).start()
+
+    def _cover_worker(self, title, artist):
+        # SMTC only hands the widget a small thumbnail; TIDAL hosts the same
+        # cover up to 1280px. Fetch it once per album and let the widget swap
+        # it in. Silent no-op on any failure (the thumbnail stays).
+        if self._session is None:
+            return
+        try:
+            t = self._match_track(title, artist)
+            album = getattr(t, "album", None) if t is not None else None
+            if album is None:
+                return
+            if not getattr(album, "cover", None):
+                album = self._session.album(album.id)   # stub without cover UUID
+            key = str(getattr(album, "id", "") or "")
+            with self._cache_lock:
+                data = self._cover_cache.get(key)
+            if data is None:
+                url = album.image(1280)
+                ctx = ssl.create_default_context()
+                with urllib.request.urlopen(url, timeout=15, context=ctx) as r:
+                    data = r.read(8 * 1024 * 1024)
+                if not data:
+                    return
+                with self._cache_lock:
+                    if len(self._cover_cache) >= 8:
+                        self._cover_cache.pop(next(iter(self._cover_cache)), None)
+                    self._cover_cache[key] = data
+            self.cover_ready.emit(title, artist, data)
+        except Exception:
+            return
 
     # ---- quality (best quality the track is available in) ------------------
     def quality(self, title, artist):

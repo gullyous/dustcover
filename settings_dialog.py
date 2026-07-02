@@ -177,6 +177,10 @@ class SettingsDialog(QDialog):
         self.startexp.setChecked(bool(cur["start_expanded"]))
         self.fallback = QCheckBox("Follow other apps when TIDAL isn't playing")
         self.fallback.setChecked(bool(cur["fallback_any"]))
+        self.hide_fs = QCheckBox("Hide while a fullscreen app is running (game mode)")
+        self.hide_fs.setChecked(bool(cur.get("hide_fullscreen", True)))
+        self.live_tray = QCheckBox("Live tray icon (album art + progress ring)")
+        self.live_tray.setChecked(bool(cur.get("live_tray", True)))
         self.poll = QSpinBox()
         self.poll.setRange(200, 2000)
         self.poll.setSingleStep(100)
@@ -192,6 +196,8 @@ class SettingsDialog(QDialog):
         bl.addWidget(self.aot)
         bl.addWidget(self.startexp)
         bl.addWidget(self.fallback)
+        bl.addWidget(self.hide_fs)
+        bl.addWidget(self.live_tray)
         bl.addLayout(poll_row)
 
         self.startup = QCheckBox("Start the widget when Windows starts")
@@ -337,6 +343,8 @@ class SettingsDialog(QDialog):
             "always_on_top": self.aot.isChecked(),
             "start_expanded": self.startexp.isChecked(),
             "fallback_any": self.fallback.isChecked(),
+            "hide_fullscreen": self.hide_fs.isChecked(),
+            "live_tray": self.live_tray.isChecked(),
             "hotkeys_enabled": self.hotkeys.isChecked(),
             "check_updates": self.check_updates.isChecked(),
             "run_at_startup": self.startup.isChecked(),
