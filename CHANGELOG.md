@@ -5,6 +5,20 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-02
+
+### Fixed
+- **Track position now actually tracks.** TIDAL reports its timeline position
+  to Windows only on seek and track change, so the progress bar and time label
+  sat at 0:00 (and synced lyrics ran off the same frozen clock). The backend now
+  derives the live position from the timestamp of TIDAL's last report, holds it
+  while paused, and excludes paused time after resume. Apps that report
+  continuously are unaffected.
+- **In-app release notes are current again.** Settings > Updates was showing a
+  hardcoded copy of the notes that had gone stale at v1.1.1; the pane now
+  renders this changelog directly (bundled into the exe), so it always matches
+  the version you're running.
+
 ## [1.4.0] - 2026-07-01
 
 ### Added
