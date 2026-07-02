@@ -44,6 +44,14 @@ WINDOW_OPACITY = 1.0
 # Start in the larger "expanded" card instead of the compact bar.
 START_EXPANDED = False
 
+# Hide the widget automatically while a fullscreen app (game, video) owns the
+# widget's monitor, and bring it back when the app closes or leaves fullscreen.
+HIDE_ON_FULLSCREEN = True
+
+# Live tray icon: show the current album art with an accent progress ring in
+# the system tray instead of the static brand mark.
+LIVE_TRAY = True
+
 # Keep the widget above other windows.
 ALWAYS_ON_TOP = True
 
@@ -53,7 +61,7 @@ ALWAYS_ON_TOP = True
 HOTKEYS_ENABLED = True
 
 # App version, shown in Settings -> About.
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 
 # Check GitHub for a newer release on startup (silent), and enable the tray
 # "Check for updates..." item. The check sends your app version and IP to

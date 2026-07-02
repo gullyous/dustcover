@@ -5,6 +5,29 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-01
+
+### Added
+- **Karaoke wipe**: the active lyric line fills with the accent color in time
+  with the vocal (interpolated between line timestamps), with smooth animation
+  that runs only while lyrics are visible and playing.
+- **Countdown dots**: during long instrumental breaks, three dots drain down so
+  you know exactly when the next lyric lands.
+- **Duotone accent**: with auto-accent on, two colors are sampled from the album
+  art and the play button, progress bar, and volume slider carry the gradient.
+- **Game mode**: the widget hides itself while a fullscreen app (game, video)
+  owns its monitor and returns when it's gone. Off switch in Settings.
+- **Live tray icon**: the tray shows the current album art with an accent
+  progress ring, dimmed while paused. Off switch in Settings.
+- **Full-res cover art**: when signed in, the small system thumbnail is silently
+  upgraded to TIDAL's high-resolution cover; "Save cover art..." (tray and
+  right-click menus) saves it to disk.
+- **Track radio**: "Track radio (more like this)" opens a TIDAL mix seeded from
+  the playing song in a standalone web-player window (needs sign-in).
+- **Single instance + CLI verbs**: launching the exe again surfaces the running
+  widget instead of starting a duplicate, and `--cmd playpause|next|prev|like|
+  show|hide|toggle|expand` remote-controls it (Stream Deck / AutoHotkey ready).
+
 ## [1.3.0] - 2026-07-01
 
 ### Added

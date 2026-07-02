@@ -34,9 +34,15 @@ no API keys and no setup. Signing in is only needed for the optional extras
 - Shuffle and repeat toggles, shown when the current source supports them
 - System-tray icon with full controls and quit
 - Volume slider (in both the compact bar and the expanded card) for the playing app, via Windows Core Audio, with a mute toggle and a system-volume fallback
-- Synced (karaoke) lyrics in the expanded view: the active line is highlighted and auto-scrolls, and you can click a line to seek. Scroll to nudge the timing when a track's lyrics drift (middle-click resets). Right-click to copy a line or the whole lyric. Tracks with only plain (unsynced) lyrics show them as a scroll-through block. From LRCLIB (free); a dimmed lyrics button signals when a track has none
+- Synced (karaoke) lyrics in the expanded view: the active line fills with the accent color in time with the vocal (a karaoke "wipe"), auto-scrolls, and you can click a line to seek. Countdown dots show when the next line lands after an instrumental break. Scroll to nudge the timing when a track's lyrics drift (middle-click resets). Right-click to copy a line or the whole lyric. Tracks with only plain (unsynced) lyrics show them as a scroll-through block. From LRCLIB (free); a dimmed lyrics button signals when a track has none
 - Heart button to favorite the playing track to your TIDAL collection, or un-favorite one that is already in it (the heart reflects your real collection when signed in). Optional, one-time sign-in
+- Track radio: open a TIDAL mix seeded from the playing song ("more like this"), from the tray or right-click menu (needs sign-in)
+- Full-res cover art: when signed in, the small system thumbnail is silently swapped for TIDAL's high-resolution cover, and "Save cover art..." saves it to disk
+- Duotone accent: with auto-accent on, the play button and progress bar carry a two-color gradient sampled from the album art
+- Game mode: the widget hides itself while a fullscreen app (game, video) owns its monitor, and comes back after (can be turned off)
+- Live tray icon: the tray shows the current album art with a progress ring and dims while paused (can be turned off)
 - Album art dims while playback is paused, so you can read play state at a glance
+- Single instance with CLI verbs: `TidalNowPlaying.exe --cmd next` (or `playpause`, `prev`, `like`, `show`, `hide`, `toggle`, `expand`) controls the running widget, ready for Stream Deck or AutoHotkey; a bare second launch just surfaces it
 - Quality badge showing what the track is available in on TIDAL (MAX / Hi-Res / Lossless / High, plus Atmos)
 - Adaptive controls: actions the current source doesn't support are greyed out or hidden
 - Preferences dialog (with an About + licenses tab), run-at-Windows-startup, and optional global hotkeys
@@ -103,7 +109,8 @@ The result is `dist\TidalNowPlaying.exe`.
 - **TIDAL web player:** the tray/right-click menu's **TIDAL web player** item opens listen.tidal.com as a standalone window (via Edge/Chrome). Handy if you don't have the desktop app, the widget reads it through Windows media controls, so keep **Follow other apps** on.
 - **Seek:** in expanded mode, drag the progress bar to jump to any point in the track.
 - **Volume:** a slider under the compact controls (and in the expanded card, with a mute button) sets the playing app's volume (TIDAL, or your browser for the web player), falling back to the system volume. It appears only when a controllable audio session is found.
-- **Lyrics:** when the current track has lyrics, a lyrics button lights up (on both the compact bar and the expanded view). Tap it for a karaoke view, the active line is highlighted and auto-scrolls, and you can click any line to seek. If the timing drifts, scroll on the panel to nudge it earlier or later (a small "sync +0.3s" badge shows the amount; middle-click resets). Tracks that only have plain (unsynced) lyrics show them as a scroll-through block. The button dims when a track has no lyrics.
+- **Lyrics:** when the current track has lyrics, a lyrics button lights up (on both the compact bar and the expanded view). Tap it for a karaoke view: the active line fills with the accent color in time with the vocal, auto-scrolls, and you can click any line to seek. During a long instrumental break, three countdown dots drain down so you know when the next line lands. If the timing drifts, scroll on the panel to nudge it earlier or later (a small "sync +0.3s" badge shows the amount; middle-click resets). Tracks that only have plain (unsynced) lyrics show them as a scroll-through block. The button dims when a track has no lyrics.
+- **Remote control / Stream Deck:** the exe is single-instance and takes command verbs: `TidalNowPlaying.exe --cmd playpause` (also `next`, `prev`, `like`, `show`, `hide`, `toggle`, `expand`) controls the already-running widget and exits. Point a Stream Deck "Open" action or any launcher at it. Launching the exe again with no arguments just brings the running widget to the front.
 - **Shuffle / repeat:** toggle buttons appear in expanded mode when the player supports them. (TIDAL does not expose shuffle/repeat to Windows, so they stay hidden for TIDAL.)
 - **Settings:** right-click the tray icon (or the widget) and choose **Settings...** for accent (and **tint accent from album art**), opacity, refresh interval, run-at-startup, hotkeys, and update checks. An **About** tab shows the version, links, and licenses.
 - **Global hotkeys** (when enabled): Ctrl+Alt+Space play/pause, Ctrl+Alt+Left/Right prev/next, Ctrl+Alt+L like, Ctrl+Alt+H show/hide.
@@ -151,6 +158,8 @@ if you prefer.
 | `AUTO_ACCENT` | `False` | Tint the accent from the album art instead of the fixed color above. |
 | `LYRICS_OFFSET` | `0.0` | Seconds to shift synced lyrics (+ earlier, - later). Nudge it live by scrolling on the lyrics panel; remembered across runs. |
 | `START_EXPANDED` | `False` | Start in the larger expanded card. |
+| `HIDE_ON_FULLSCREEN` | `True` | Game mode: hide while a fullscreen app owns the widget's monitor. |
+| `LIVE_TRAY` | `True` | Live tray icon: album art + progress ring instead of the brand mark. |
 | `ALWAYS_ON_TOP` | `True` | Keep the widget above other windows. |
 | `BACKGROUND_OPACITY` | `0.82` | Panel transparency (0.0 = clear, 1.0 = solid); text and controls stay opaque. |
 | `WINDOW_OPACITY` | `1.0` | Fade the entire widget, text included. Lower for a fully ghosted look. |
@@ -173,6 +182,7 @@ if you prefer.
 | `updater.py` | Optional in-app update check + self-replace install (GitHub releases). |
 | `volume_backend.py` | Optional per-app volume control via Windows Core Audio (pycaw), on its own COM thread. |
 | `lyrics_backend.py` | Optional synced lyrics from LRCLIB, on a background thread. |
+| `fullscreen_watch.py` | Game mode: detects a fullscreen app on the widget's monitor (user32 via ctypes). |
 | `make_icon.py` | Generates `icon.ico` for the packaged app. |
 | `build.bat` | One-click build of the standalone `.exe`. |
 | `run.bat` / `run-debug.bat` | Run from source (with or without a console). |
