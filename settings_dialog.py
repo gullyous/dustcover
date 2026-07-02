@@ -13,7 +13,9 @@ It only collects values; main.py applies and saves them so the live widget,
 hotkeys, and startup entry all update together.
 """
 
+import os
 import platform
+import re
 import sys
 
 from PySide6 import __version__ as PYSIDE_VERSION
@@ -73,50 +75,40 @@ sponsored by TIDAL or Aspiro AB. "TIDAL" is a trademark of its respective owner.
 """
 
 
-RELEASE_NOTES = """v1.1.1
+def _release_notes():
+    """Release notes for the Updates tab, rendered from the bundled
+    CHANGELOG.md so the in-app notes can never drift from the real history
+    (they were previously a hand-maintained copy that went stale)."""
+    base = (getattr(sys, "_MEIPASS", None)
+            or os.path.dirname(os.path.abspath(__file__)))
+    try:
+        with open(os.path.join(base, "CHANGELOG.md"), encoding="utf-8") as f:
+            md = f.read()
+    except OSError:
+        return ("Release notes could not be loaded.\n"
+                f"They are always available at:\n{REPO}/releases")
 
-  - Tiny volume slider under the compact controls for a quick adjust.
-  - Fixed the expand chevron overlapping the next-track button in compact mode.
-
-v1.1.0
-
-Added
-  - Volume slider: control the playing app's volume (TIDAL or your browser) with
-    a mute toggle, via the Windows Core Audio APIs.
-  - In-app updates: checks GitHub on startup and from the button above; one-click
-    install, verified over HTTPS with a SHA-256 checksum, then restarts.
-  - Right-click the widget for a management menu (Settings, Open TIDAL, updates).
-  - About tab with version, links, and full license info.
-
-Changed
-  - "Sign in to TIDAL" appears only when you are signed out, with a tooltip
-    explaining it powers the optional likes and quality badge.
-  - Removed the desktop balloon notifications; feedback is shown in the widget.
-  - "Open TIDAL" is no longer labelled "change quality" (use it for playlists too).
-  - Relicensed from MIT to the GNU General Public License v3.0 (GPLv3).
-  - Lower idle CPU and a leaner build (queue-driven backend, gated progress
-    timer, spec-based packaging with unused Qt modules excluded).
-
-Fixed
-  - TIDAL sign-in no longer silently expires (the token is refreshed and re-saved).
-  - Cleaner shutdown; no leaked background worker.
-  - Seek / shuffle / repeat show only when the player really supports them.
-  - Liking a track no longer blocks the quality lookup.
-  - Track times over an hour show as H:MM:SS instead of 62:00.
-
-
-v1.0.0
-
-  - First release: dark-glass TIDAL now-playing widget, reading from the Windows
-    media controls (SMTC).
-  - Live cover art, title, artist; compact and expanded views.
-  - Play / pause, next / previous, seekable progress bar.
-  - Blurred album-art background; configurable transparency and accent color.
-  - System-tray controls, global hotkeys, run-at-Windows-startup.
-  - Drag to reposition; snaps to the nearest screen corner.
-  - Optional: favorite the current track to TIDAL, plus a quality badge
-    (MAX / Hi-Res / Lossless / High, with Atmos).
-"""
+    out, skipping, seen_release = [], False, False
+    for line in md.splitlines():
+        s = line.rstrip()
+        m = re.match(r"^##\s*\[([^\]]+)\]\s*-?\s*(.*)$", s)
+        if m:
+            version, date = m.group(1), m.group(2).strip()
+            skipping = version.lower() == "unreleased"
+            if not skipping:
+                if seen_release:
+                    out.append("")
+                out.append(f"v{version}" + (f"  ({date})" if date else ""))
+                seen_release = True
+            continue
+        if skipping or not seen_release:
+            continue   # preamble and the empty Unreleased section
+        if s.startswith("### "):
+            s = s[4:]
+        s = s.replace("**", "").replace("`", "")
+        if s or (out and out[-1]):     # collapse runs of blank lines
+            out.append(s)
+    return "\n".join(out).strip() or f"See {REPO}/releases"
 
 
 class SettingsDialog(QDialog):
@@ -255,7 +247,7 @@ class SettingsDialog(QDialog):
 
         notes = QTextEdit()
         notes.setReadOnly(True)
-        notes.setPlainText(RELEASE_NOTES)
+        notes.setPlainText(_release_notes())
         v.addWidget(notes, 1)
         return page
 

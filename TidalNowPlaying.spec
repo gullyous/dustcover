@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = []
+datas = [('CHANGELOG.md', '.')]   # in-app release notes (Settings > Updates)
 binaries = []
 hiddenimports = []
 for _pkg in ('winsdk', 'tidalapi', 'pynput', 'pycaw', 'comtypes', 'psutil'):

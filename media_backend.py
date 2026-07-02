@@ -19,7 +19,9 @@ Quick check (no GUI needed):
 """
 
 import asyncio
+import datetime
 import queue
+import time
 
 from PySide6.QtCore import QThread, Signal
 
@@ -113,7 +115,80 @@ def _pick_session(mgr):
     return None
 
 
-async def _snapshot(mgr, last_key):
+_MAX_STAMP_AGE = 24 * 3600.0   # a timeline stamp older than this is garbage
+
+
+def _live_position(raw, last_updated, playing, rate, duration, state):
+    """Best-effort live playback position in seconds.
+
+    Some apps (TIDAL among them) stamp the SMTC timeline only on track change
+    and seek, so the reported `position` freezes while the song plays. While
+    playing, advance the stamped position by the wall-clock time since the
+    stamp (times the playback rate). While paused, hold the last value we
+    computed: for those apps the stamp does not move on pause either, so time
+    spent paused must never be counted as playback.
+
+    `state` is a mutable dict owned by the worker thread (single-threaded).
+    Well-behaved apps that re-stamp continuously get a near-zero correction,
+    and their re-stamp on pause resets the state so the raw value is used.
+    """
+    if raw is None:
+        raw = 0.0
+    now = datetime.datetime.now(datetime.timezone.utc)
+    try:
+        stamp_age = (now - last_updated).total_seconds()
+    except Exception:
+        stamp_age = None
+    if stamp_age is None or stamp_age < -5.0 or stamp_age > _MAX_STAMP_AGE:
+        # No usable stamp THIS poll: report raw untouched but keep the
+        # bookkeeping. A transient WinRT hiccup must not wipe paused_accum/
+        # held; the epoch check below invalidates state when a genuinely new
+        # stamp appears.
+        return max(0.0, raw)
+
+    # A new stamp (seek, track change, or a well-behaved app's regular update)
+    # starts a fresh epoch: no accumulated pause time, nothing held.
+    epoch = (round(raw, 3), last_updated)
+    if state.get("epoch") != epoch:
+        state["epoch"] = epoch
+        # First observed while paused: everything since the stamp is
+        # unobserved, so count it as paused. Resume then advances from the
+        # raw position we were showing, instead of leaping to stamp age
+        # (which pinned the bar at track end after launch-while-paused).
+        state["paused_accum"] = 0.0 if playing else stamp_age
+        state["paused_since"] = None
+        state["held"] = None
+
+    if playing:
+        if state.get("paused_since") is not None:
+            state["paused_accum"] += time.monotonic() - state["paused_since"]
+            state["paused_since"] = None
+        eff = max(0.0, stamp_age - state.get("paused_accum", 0.0))
+        pos = raw + eff * (rate or 1.0)
+        state["held"] = pos
+    else:
+        if state.get("paused_since") is None:
+            state["paused_since"] = time.monotonic()
+        pos = state.get("held")
+        if pos is None:
+            pos = raw   # paused since before we started watching
+    if duration and duration > 0:
+        pos = min(pos, duration)
+    return max(0.0, pos)
+
+
+def _source_state(pos_state, source):
+    """Per-source bookkeeping for _live_position, so bouncing between apps
+    (FALLBACK_TO_ANY) doesn't discard one app's pause state. Bounded."""
+    st = pos_state.get(source)
+    if st is None:
+        if len(pos_state) >= 6:
+            pos_state.pop(next(iter(pos_state)), None)
+        st = pos_state[source] = {}
+    return st
+
+
+async def _snapshot(mgr, last_key, pos_state):
     """Build a dict describing the current track. Cheap to call repeatedly.
 
     Only re-reads (relatively expensive) album art when the track changes.
@@ -139,10 +214,12 @@ async def _snapshot(mgr, last_key):
 
     try:
         tl = session.get_timeline_properties()
-        info["position"] = max(0.0, tl.position.total_seconds()) if tl.position else 0.0
+        raw_pos = max(0.0, tl.position.total_seconds()) if tl.position else 0.0
         info["duration"] = max(0.0, tl.end_time.total_seconds()) if tl.end_time else 0.0
+        last_updated = getattr(tl, "last_updated_time", None)
     except Exception:
-        info["position"] = info["duration"] = 0.0
+        raw_pos, last_updated = 0.0, None
+        info["duration"] = 0.0
 
     try:
         info["source"] = session.source_app_user_model_id or ""
@@ -173,6 +250,12 @@ async def _snapshot(mgr, last_key):
         info["can_playpause"] = info["can_next"] = info["can_prev"] = True
         info["can_seek"] = info["can_shuffle"] = info["can_repeat"] = False
         info["shuffle"], info["repeat"], info["rate"] = False, 0, 1.0
+
+    # Position last: TIDAL freezes the reported position (stamping the timeline
+    # only on seek/track change), so derive the live value from the stamp.
+    info["position"] = _live_position(raw_pos, last_updated, info["playing"],
+                                      info.get("rate", 1.0), info["duration"],
+                                      _source_state(pos_state, info["source"]))
 
     key = (info["title"], info["artist"], info["album"])
     info["_key"] = key
@@ -282,11 +365,12 @@ class MediaWorker(QThread):
                 return
 
             last_key = None
+            pos_state = {}   # _live_position bookkeeping (worker thread only)
 
             def refresh():
                 nonlocal last_key
                 try:
-                    info = loop.run_until_complete(_snapshot(mgr, last_key))
+                    info = loop.run_until_complete(_snapshot(mgr, last_key, pos_state))
                     if info.get("available"):
                         last_key = info.get("_key", last_key)
                     self.updated.emit(info)
@@ -323,7 +407,7 @@ class MediaWorker(QThread):
 if __name__ == "__main__":
     async def _selftest():
         mgr = await MediaManager.request_async()
-        info = await _snapshot(mgr, None)
+        info = await _snapshot(mgr, None, {})
         if not info.get("available"):
             print("No media session found. Open TIDAL and press play, then retry.")
             return
@@ -331,6 +415,7 @@ if __name__ == "__main__":
         print(f"  artist: {info['artist']}")
         print(f"  album : {info['album']}")
         print(f"  state : {'playing' if info['playing'] else 'paused'}")
+        print(f"  pos   : {info['position']:.1f} / {info['duration']:.1f} s")
         print(f"  source: {info['source']}")
         print(f"  art   : {len(info['art']) if info.get('art') else 0} bytes")
 
