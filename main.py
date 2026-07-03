@@ -8,7 +8,6 @@ Entry point. Creates the Qt app, the SMTC worker, and the widget, then wires
 them together. Run via run.bat (or `python main.py`).
 """
 
-import re
 import sys
 import time
 
@@ -46,21 +45,6 @@ def _cli_verb(argv):
         return ""
     v = argv[i + 1].strip().lower()
     return v if v in CMD_VERBS else ""
-
-
-def _plain_notes(md):
-    """Release-body markdown -> plain text for the update dialog (QMessageBox
-    renders it literally, so **bold**, headings, and dividers read as noise)."""
-    out = []
-    for line in (md or "").splitlines():
-        s = line.rstrip()
-        if s.strip() == "---":
-            continue
-        s = re.sub(r"^#{1,6}\s*", "", s)
-        s = s.replace("**", "").replace("`", "")
-        if s or (out and out[-1]):   # collapse runs of blank lines
-            out.append(s)
-    return "\n".join(out).strip()
 
 
 def _forward_cmd(verb):
@@ -203,54 +187,37 @@ def main():
     updater = Updater()
 
     def _on_update_available(rel):
-        from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QMessageBox, QProgressDialog
-        notes = _plain_notes(rel.get("body") or "")
-        if len(notes) > 1200:
-            notes = notes[:1200] + "..."
-        box = QMessageBox(widget)
-        box.setWindowTitle("Update available")
-        box.setIcon(QMessageBox.Information)
-        box.setText(f"{rel.get('name') or rel.get('tag_name')} is available.\n"
-                    f"You have v{config.APP_VERSION}.")
-        if notes:
-            box.setInformativeText(notes)
-        b_now = box.addButton("Update now", QMessageBox.AcceptRole)
-        b_skip = box.addButton("Skip this version", QMessageBox.DestructiveRole)
-        box.addButton("Later", QMessageBox.RejectRole)
-        box.setDefaultButton(b_now)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is b_skip:
-            updater.skip_version(rel.get("tag_name"))
-            return
-        if clicked is not b_now:
-            return
-        # Download off the GUI thread so the widget never freezes; show a busy
-        # dialog and act on the result delivered via download_done.
-        progress = QProgressDialog("Downloading update...", "", 0, 0, widget)
-        progress.setWindowTitle("Updating")
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setCancelButton(None)
-        progress.setMinimumDuration(0)
+        from update_dialog import UpdateDialog
+        dlg = UpdateDialog(rel.get("name"), rel.get("tag_name"),
+                           config.APP_VERSION, rel.get("body") or "", widget)
+
+        def _progress(done, total):
+            dlg.set_progress(done, total)
 
         def _done(status, msg):
-            try:
-                updater.download_done.disconnect(_done)
-            except (RuntimeError, TypeError):
-                pass
-            progress.close()
+            for sig, fn in ((updater.download_done, _done),
+                            (updater.download_progress, _progress)):
+                try:
+                    sig.disconnect(fn)
+                except (RuntimeError, TypeError):
+                    pass
             if status == "relaunching":
-                app.quit()  # release the exe lock so the helper can swap it
+                dlg.accept()   # unwind the modal loop before quitting
+                app.quit()     # release the exe lock so the swap helper can run
             elif status == "source":
-                pass  # release page already opened in the browser
+                dlg.accept()   # release page already opened in the browser
             else:
-                QMessageBox.warning(widget, "Update failed",
-                                    msg or "The update could not be applied.")
+                dlg.show_error(msg)
 
-        updater.download_done.connect(_done)
-        progress.show()
-        updater.download_async(rel)
+        def _start():
+            dlg.set_downloading()
+            updater.download_progress.connect(_progress)
+            updater.download_done.connect(_done)
+            updater.download_async(rel)
+
+        dlg.update_now.connect(_start)
+        dlg.skip.connect(lambda: updater.skip_version(rel.get("tag_name")))
+        dlg.exec()
 
     def _on_up_to_date(silent):
         if silent:

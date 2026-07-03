@@ -264,11 +264,12 @@ def _host_allowed(url) -> bool:
 
 
 # --- Streaming download ------------------------------------------------------
-def download_asset(url, dest):
+def download_asset(url, dest, progress_cb=None):
     """Stream-download `url` to `dest` atomically. Returns True on success.
 
     Verifies host is GitHub before downloading. Writes a temp file in the same
-    directory, then os.replace()s to dest. Never raises.
+    directory, then os.replace()s to dest. Never raises. `progress_cb`, if given,
+    is called as progress_cb(bytes_downloaded, total_or_0) during the stream.
     """
     if not url:
         return False
@@ -299,6 +300,11 @@ def download_asset(url, dest):
                 _log(f"Refusing download: {expected} bytes exceeds cap.")
                 return False
 
+            if progress_cb:
+                try:
+                    progress_cb(0, expected or 0)
+                except Exception:
+                    pass
             fd, part = tempfile.mkstemp(prefix=".upd-", dir=d)
             with os.fdopen(fd, "wb") as f:
                 while True:
@@ -309,6 +315,11 @@ def download_asset(url, dest):
                     if written > MAX_ASSET_BYTES:
                         raise IOError("Download exceeded maximum allowed size.")
                     f.write(chunk)
+                    if progress_cb:
+                        try:
+                            progress_cb(written, expected or 0)
+                        except Exception:
+                            pass
                 f.flush()
                 os.fsync(f.fileno())
 
@@ -520,6 +531,7 @@ class Updater(QObject):
     up_to_date = Signal(bool)         # arg: was this a silent check?
     check_failed = Signal(str, bool)  # message, silent?
     download_done = Signal(str, str)  # status, message
+    download_progress = Signal(int, int)  # bytes downloaded, total (0 = unknown)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -579,7 +591,7 @@ class Updater(QObject):
             _log(f"Could not persist skipped version: {e}")
 
     # ---- download + apply ------------------------------------------------
-    def download_and_apply(self, release):
+    def download_and_apply(self, release, progress_cb=None):
         """Download, verify, swap, and restart.
 
         Frozen: returns ("relaunching", None) on success after spawning the
@@ -599,7 +611,7 @@ class Updater(QObject):
         if not asset or not asset.get("browser_download_url"):
             return ("download-failed", f"{ASSET_NAME} not found in the release.")
 
-        if not download_asset(asset["browser_download_url"], new_path):
+        if not download_asset(asset["browser_download_url"], new_path, progress_cb):
             _safe_unlink(new_path)
             return ("download-failed", "The download failed or was rejected.")
 
@@ -646,8 +658,17 @@ class Updater(QObject):
                          daemon=True).start()
 
     def _download_worker(self, release):
+        # Throttle: a ~66 MB download in 64 KB chunks would emit ~1000 times.
+        # Only signal when the whole-percent changes (or the total is unknown),
+        # so the UI updates smoothly without churn.
+        last = [-1]
+        def _cb(done, total):
+            pct = int(done * 100 / total) if total > 0 else -1
+            if pct != last[0] or total <= 0:
+                last[0] = pct
+                self.download_progress.emit(int(done), int(total))
         try:
-            status, msg = self.download_and_apply(release)
+            status, msg = self.download_and_apply(release, _cb)
         except Exception as e:
             status, msg = "spawn-failed", str(e)
         self.download_done.emit(status, msg or "")

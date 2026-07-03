@@ -26,7 +26,7 @@ jobs:
           pip install -r requirements.txt pytest
 
       - name: Byte-compile all modules
-        run: python -m compileall -q main.py widget.py media_backend.py lyrics_backend.py tidal_likes.py volume_backend.py fullscreen_watch.py discord_backend.py scrobble_backend.py obs_overlay.py ambient.py config.py settings.py settings_dialog.py hotkeys.py icons.py updater.py make_release_body.py
+        run: python -m compileall -q main.py widget.py media_backend.py lyrics_backend.py tidal_likes.py volume_backend.py fullscreen_watch.py discord_backend.py scrobble_backend.py obs_overlay.py ambient.py update_dialog.py config.py settings.py settings_dialog.py hotkeys.py icons.py updater.py make_release_body.py
 
       - name: Run tests
         env:
