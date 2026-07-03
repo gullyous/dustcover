@@ -5,6 +5,18 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-07-02
+
+### Changed
+- **Long lyric lines now show in full.** The current line wraps across as many
+  rows as it needs (with the karaoke fill flowing through them) instead of being
+  cut off with "...", so dense, fast, wordy lines are fully readable.
+- **Lyrics view is cleaner and tighter.** Lines fade out as they approach the
+  top and bottom edges, so they no longer crowd the title/artist header or the
+  controls, and the title and artist have a bit more breathing room. The active
+  line also highlights closer to on-time (a smaller anticipation lead), which
+  reads tighter on fast songs.
+
 ## [1.4.4] - 2026-07-02
 
 ### Added

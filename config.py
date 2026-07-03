@@ -68,7 +68,7 @@ ALWAYS_ON_TOP = True
 HOTKEYS_ENABLED = True
 
 # App version, shown in Settings -> About.
-APP_VERSION = "1.4.4"
+APP_VERSION = "1.4.5"
 
 # Check GitHub for a newer release on startup (silent), and enable the tray
 # "Check for updates..." item. The check sends your app version and IP to
