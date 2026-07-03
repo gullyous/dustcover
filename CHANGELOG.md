@@ -5,6 +5,14 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-07-03
+
+### Changed
+- The Settings buttons now match the redesigned update dialog: one filled-accent
+  "Save" button and subtle rounded outline buttons for everything else. The
+  outline buttons adapt to a light or dark system theme, and "Save" previews the
+  accent color you're picking.
+
 ## [1.5.1] - 2026-07-03
 
 ### Changed
