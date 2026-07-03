@@ -5,6 +5,14 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-07-03
+
+### Changed
+- **Redesigned the update dialog.** The "update available" prompt is now a
+  dark-glass panel that matches the widget, with the release notes rendered
+  cleanly (headings, bullets) and a real download progress bar showing bytes and
+  percentage, in place of the old stock message box and indeterminate spinner.
+
 ## [1.5.0] - 2026-07-03
 
 ### Added

@@ -48,7 +48,7 @@ no API keys and no setup. Signing in is only needed for the optional extras
 - Quality badge showing what the track is available in on TIDAL (MAX / Hi-Res / Lossless / High, plus Atmos)
 - Adaptive controls: actions the current source doesn't support are greyed out or hidden
 - Preferences dialog (with an About + licenses tab), run-at-Windows-startup, and optional global hotkeys
-- Optional in-app update check: notified of new releases and updated with one click (HTTPS download, SHA-256 verified, can be turned off)
+- Optional in-app update check: a dark-glass update panel shows the release notes and a live download progress bar; one click updates (HTTPS download, SHA-256 verified, can be turned off)
 - Frameless, always-on-top, and stays out of the taskbar
 - Drag to reposition; locks into the nearest screen corner on release
 - Ships as a single standalone `.exe`, no Python needed to run it
