@@ -5,6 +5,15 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-07-03
+
+### Changed
+- Reorganized the tray and right-click menus into matching intent groups:
+  track actions, TIDAL navigation, view, and housekeeping ("Check for
+  updates..." now sits next to Settings). "Compact mode" is now a checkable
+  menu item whose checkmark tracks the current view, replacing the label that
+  flip-flopped between "Compact" and "Expand".
+
 ## [1.5.2] - 2026-07-03
 
 ### Changed
