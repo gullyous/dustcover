@@ -32,6 +32,10 @@ import settings
 
 REPO = "https://github.com/gullyous/Tidal-Widget"
 
+
+def _lum(c):
+    return 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
+
 _LICENSES = f"""TIDAL Now-Playing Widget v{config.APP_VERSION}
 Copyright (C) 2026 gullyous
 
@@ -123,10 +127,6 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Tidal Widget - Settings")
         self.setMinimumWidth(380)
-        self.setStyleSheet(
-            "QGroupBox { font-weight:600; margin-top:10px;"
-            " border:1px solid #5a5a62; border-radius:6px; padding:10px 8px 8px 8px; }"
-            "QGroupBox::title { subcontrol-origin: margin; left:10px; padding:0 4px; }")
         cur = settings.current()
         self._accent = str(cur["accent"])
 
@@ -139,10 +139,16 @@ class SettingsDialog(QDialog):
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
+        ok = bb.button(QDialogButtonBox.Ok)
+        ok.setObjectName("accent")          # the one filled accent button
+        ok.setText("Save")
+        for b in (ok, bb.button(QDialogButtonBox.Cancel)):
+            b.setCursor(Qt.PointingHandCursor)
 
         col = QVBoxLayout(self)
         col.addWidget(tabs)
         col.addWidget(bb)
+        self._restyle()
 
     # ---- General tab -------------------------------------------------------
     def _build_general_tab(self, cur):
@@ -258,6 +264,7 @@ class SettingsDialog(QDialog):
         self.lb_token.setEchoMode(QLineEdit.Password)
         self.lb_token.setPlaceholderText("ListenBrainz user token")
         verify = QPushButton("Verify token")
+        verify.setCursor(Qt.PointingHandCursor)
         verify.clicked.connect(self._verify_lb)
         self._lb_checked.connect(self._on_lb_checked)
         self._lb_status = QLabel("")
@@ -329,6 +336,7 @@ class SettingsDialog(QDialog):
         v.addWidget(self.check_updates)
 
         check_btn = QPushButton("Check for updates now")
+        check_btn.setCursor(Qt.PointingHandCursor)
         check_btn.clicked.connect(lambda: self.check_updates_clicked.emit())
         v.addWidget(check_btn, 0, Qt.AlignLeft)
 
@@ -384,6 +392,7 @@ class SettingsDialog(QDialog):
         disclaimer.setStyleSheet("color:#7d7d86; font-size:10px;")
 
         lic_btn = QPushButton("Licenses")
+        lic_btn.setCursor(Qt.PointingHandCursor)
         lic_btn.clicked.connect(self._show_licenses)
 
         v.addWidget(title)
@@ -419,11 +428,38 @@ class SettingsDialog(QDialog):
         if c.isValid():
             self._accent = c.name()
             self._style_accent_btn()
+            self._restyle()   # the Save button previews the new accent
 
     def _style_accent_btn(self):
+        c = QColor(self._accent)
+        on = "#0a0a0a" if _lum(c) > 140 else "#ffffff"
         self.accent_btn.setText(self._accent)
         self.accent_btn.setStyleSheet(
-            f"background:{self._accent}; color:#06222a; padding:5px; font-weight:600;")
+            f"background:{self._accent}; color:{on}; border:none;"
+            "border-radius:8px; padding:7px 14px; font-weight:600;")
+
+    def _restyle(self):
+        """Match the update dialog: one filled-accent button (Save), the rest
+        subtle rounded ghost buttons. Ghost colors use palette() roles so they
+        stay legible in both the app's dark theme and a system light theme; only
+        the accent fill is fixed (a vivid color reads on either)."""
+        acc = self._accent
+        on = "#0a0a0a" if _lum(QColor(acc)) > 140 else "#ffffff"
+        lit = QColor(acc).lighter(115).name()
+        self.setStyleSheet(f"""
+            QGroupBox {{ font-weight:600; margin-top:10px;
+                border:1px solid palette(mid); border-radius:8px;
+                padding:12px 10px 10px 10px; }}
+            QGroupBox::title {{ subcontrol-origin: margin; left:10px; padding:0 4px; }}
+            QPushButton {{ background:transparent; color:palette(button-text);
+                border:1px solid palette(mid); border-radius:8px; padding:6px 14px; }}
+            QPushButton:hover {{ background:palette(midlight);
+                border-color:palette(dark); }}
+            QPushButton:pressed {{ background:palette(mid); }}
+            QPushButton#accent {{ background:{acc}; color:{on}; border:none;
+                font-weight:700; padding:7px 20px; }}
+            QPushButton#accent:hover {{ background:{lit}; }}
+        """)
 
     def values(self):
         return {
