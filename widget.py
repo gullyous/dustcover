@@ -112,6 +112,28 @@ def _dim_pixmap(pm: QPixmap) -> QPixmap:
     return out
 
 
+def _on_accent_color(hexcolor: str) -> str:
+    """Icon color that reads on top of `hexcolor` (dark on light, light on dark)."""
+    c = QColor(hexcolor)
+    lum = 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
+    return "#0a0a0a" if lum > 140 else "#ffffff"
+
+
+def make_round_btn(icon, on_click, diameter, accent=False):
+    """Circular icon button in the shared dark-glass language, used by the
+    card and the fullscreen ambient view. Pass on_click=None to wire the
+    click up later (the ambient view's buttons connect in toggle_ambient)."""
+    b = QPushButton()
+    b.setIcon(icon)
+    b.setIconSize(QSize(int(diameter * 0.5), int(diameter * 0.5)))
+    b.setFixedSize(diameter, diameter)
+    b.setCursor(Qt.PointingHandCursor)
+    b.setProperty("accent", accent)
+    if on_click is not None:
+        b.clicked.connect(lambda: on_click())
+    return b
+
+
 class _ClickToSetStyle(QProxyStyle):
     """Slider style tweak: clicking the groove moves the handle straight to the
     clicked position (and starts a drag from there) instead of paging toward
@@ -748,6 +770,18 @@ class NowPlayingWidget(QWidget):
         self._ambient = None        # fullscreen "now playing" window (lazy)
         self._shuffle = False
         self._repeat = 0   # 0 none, 1 track, 2 list
+        self._quality = ""          # current quality badge text ("" = unknown)
+        # Transport capabilities + volume state are remembered here so a
+        # freshly (re)created ambient window can be given the full picture
+        # (it is destroyed on close and must never come back stale).
+        self._can_seek = False
+        self._can_prev = True
+        self._can_next = True
+        self._can_play = True
+        self._can_shuffle = False
+        self._can_repeat = False
+        self._vol_level = -1.0      # last volume level (< 0 = nothing controllable)
+        self._vol_scope = ""
 
         # progress interpolation state
         self._pos = 0.0
@@ -986,14 +1020,7 @@ class NowPlayingWidget(QWidget):
         return page
 
     def _round_btn(self, icon, on_click, diameter, accent=False):
-        b = QPushButton()
-        b.setIcon(icon)
-        b.setIconSize(QSize(int(diameter * 0.5), int(diameter * 0.5)))
-        b.setFixedSize(diameter, diameter)
-        b.setCursor(Qt.PointingHandCursor)
-        b.setProperty("accent", accent)
-        b.clicked.connect(lambda: on_click())
-        return b
+        return make_round_btn(icon, on_click, diameter, accent)
 
     def _set_tooltips(self):
         hk = config.HOTKEYS_ENABLED
@@ -1034,10 +1061,12 @@ class NowPlayingWidget(QWidget):
         self.mute_toggled.emit(not self._muted)
 
     def on_volume_state(self, level, muted, scope):
+        self._vol_level, self._vol_scope = float(level), scope or ""
         # level < 0 or empty scope -> nothing controllable; hide the controls.
         if level < 0 or not scope:
             self.e_vol_box.hide()
             self.c_vol.hide()
+            self._push_ambient_volume()   # hides the ambient row too
             return
         self.e_vol_box.show()
         self.c_vol.show()
@@ -1046,7 +1075,8 @@ class NowPlayingWidget(QWidget):
         self.e_mute.setToolTip(("Unmute " if self._muted else "Mute ") + scope)
         self.e_vol.setToolTip(f"Volume: {scope}")
         self.c_vol.setToolTip(f"Volume: {scope}")
-        if self.e_vol.isSliderDown() or self.c_vol.isSliderDown():
+        if (self.e_vol.isSliderDown() or self.c_vol.isSliderDown()
+                or (self._ambient is not None and self._ambient.vol.isSliderDown())):
             # Never yank a handle the user is holding: above the master ceiling
             # the read-back is lower than the request, and a mid-drag setValue
             # would fight every mouse move. The next poll settles it on release.
@@ -1056,6 +1086,7 @@ class NowPlayingWidget(QWidget):
         self.e_vol.setValue(v)
         self.c_vol.setValue(v)
         self._vol_updating = False
+        self._push_ambient_volume()
 
     # ---- accent (fixed, or auto-tinted from album art) ---------------------
     def _effective_accent(self):
@@ -1070,13 +1101,8 @@ class NowPlayingWidget(QWidget):
             return self._accent2_dyn
         return QColor(self._effective_accent()).lighter(135).name()
 
-    def _on_accent_color(self, hexcolor):
-        c = QColor(hexcolor)
-        lum = 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
-        return "#0a0a0a" if lum > 140 else "#ffffff"
-
     def _effective_on_accent(self):
-        return self._on_accent_color(self._effective_accent())
+        return _on_accent_color(self._effective_accent())
 
     @staticmethod
     def _boost(color):
@@ -1221,48 +1247,54 @@ class NowPlayingWidget(QWidget):
         menu.addAction(act_prev)
         menu.addSeparator()
 
+        # track actions
         self.act_like = QAction(icons.heart_icon(SUBTLE, filled=False),
                                 "Like current track", self)
         self.act_like.triggered.connect(self._on_heart)
         menu.addAction(self.act_like)
-        self.act_signin = QAction("Sign in to TIDAL", self)
-        self.act_signin.setToolTip(SIGNIN_HINT)
-        self.act_signin.triggered.connect(lambda: self.signin_requested.emit())
-        menu.addAction(self.act_signin)
-        act_open = QAction("Open TIDAL", self)
-        act_open.triggered.connect(self._open_tidal)
-        menu.addAction(act_open)
-        act_web = QAction("TIDAL web player", self)
-        act_web.triggered.connect(self._open_web_player)
-        menu.addAction(act_web)
-        self.act_radio = QAction("Track radio (more like this)", self)
-        self.act_radio.setToolTip("Open a TIDAL mix seeded from the playing track")
-        self.act_radio.triggered.connect(self._on_radio_clicked)
-        menu.addAction(self.act_radio)
         act_copy = QAction("Copy now playing", self)
         act_copy.triggered.connect(self._copy_now_playing)
         menu.addAction(act_copy)
         self.act_save_cover = QAction("Save cover art...", self)
         self.act_save_cover.triggered.connect(self._save_cover)
         menu.addAction(self.act_save_cover)
+        self.act_radio = QAction("Track radio (more like this)", self)
+        self.act_radio.setToolTip("Open a TIDAL mix seeded from the playing track")
+        self.act_radio.triggered.connect(self._on_radio_clicked)
+        menu.addAction(self.act_radio)
         menu.addSeparator()
 
-        act_check_updates = QAction("Check for updates...", self)
-        act_check_updates.triggered.connect(lambda: self.check_updates_requested.emit())
-        menu.addAction(act_check_updates)
+        # TIDAL navigation
+        act_open = QAction("Open TIDAL", self)
+        act_open.triggered.connect(self._open_tidal)
+        menu.addAction(act_open)
+        act_web = QAction("TIDAL web player", self)
+        act_web.triggered.connect(self._open_web_player)
+        menu.addAction(act_web)
         menu.addSeparator()
 
-        self.act_visibility = QAction("Hide widget", self)
-        self.act_visibility.triggered.connect(self._toggle_visibility)
-        menu.addAction(self.act_visibility)
-        self.act_mode = QAction("Expand", self)
+        # view
+        self.act_mode = QAction("Compact mode", self)
+        self.act_mode.setCheckable(True)
+        self.act_mode.setChecked(not self._expanded)
         self.act_mode.triggered.connect(self.toggle_mode)
         menu.addAction(self.act_mode)
         act_ambient = QAction("Fullscreen now playing", self)
         act_ambient.triggered.connect(self.toggle_ambient)
         menu.addAction(act_ambient)
+        self.act_visibility = QAction("Hide widget", self)
+        self.act_visibility.triggered.connect(self._toggle_visibility)
+        menu.addAction(self.act_visibility)
         menu.addSeparator()
 
+        # housekeeping
+        self.act_signin = QAction("Sign in to TIDAL", self)
+        self.act_signin.setToolTip(SIGNIN_HINT)
+        self.act_signin.triggered.connect(lambda: self.signin_requested.emit())
+        menu.addAction(self.act_signin)
+        act_check_updates = QAction("Check for updates...", self)
+        act_check_updates.triggered.connect(lambda: self.check_updates_requested.emit())
+        menu.addAction(act_check_updates)
         act_settings = QAction("Settings...", self)
         act_settings.triggered.connect(lambda: self.settings_requested.emit())
         menu.addAction(act_settings)
@@ -1282,7 +1314,7 @@ class NowPlayingWidget(QWidget):
         self.act_radio.setEnabled(self._logged_in and bool(self._cur_title))
         self.act_save_cover.setEnabled(self._cover_src is not None)
         self.act_visibility.setText("Hide widget" if self.isVisible() else "Show widget")
-        self.act_mode.setText("Compact" if self._expanded else "Expand")
+        self.act_mode.setChecked(not self._expanded)
         self.act_play.setText("Pause" if self._playing else "Play")
         self.act_play.setIcon(icons.pause_icon(INK) if self._playing
                               else icons.play_icon(INK))
@@ -1422,6 +1454,8 @@ class NowPlayingWidget(QWidget):
         ic = icons.heart_icon(LIKE_COLOR if self._liked else SUBTLE, 64, self._liked)
         for b in (self.c_like, self.e_like):
             b.setIcon(ic)
+        if self._ambient is not None:
+            self._ambient.set_liked(self._liked)
 
     def _tray_msg(self, text, title="Tidal Now Playing"):
         # Desktop balloon notifications were intrusive; intentionally a no-op.
@@ -1482,12 +1516,15 @@ class NowPlayingWidget(QWidget):
     def on_quality(self, title, artist, label):
         if (title, artist) != (self._cur_title, self._cur_artist):
             return  # stale result for a track that already changed
+        self._quality = label or ""
         if label:
             self.e_quality.setText(label)
             self.e_quality.setToolTip(f"Available in {label} on TIDAL")
             self.e_quality.show()
         else:
             self.e_quality.hide()
+        if self._ambient is not None:
+            self._ambient.set_quality(self._quality)
 
     # ---- lyrics ------------------------------------------------------------
     def on_lyrics(self, title, artist, lines):
@@ -1524,9 +1561,22 @@ class NowPlayingWidget(QWidget):
         if self._ambient is None:
             from ambient import AmbientWindow
             self._ambient = AmbientWindow()
-            self._ambient.lyrics.seek_requested.connect(self.seek_clicked)
-            self._ambient.lyrics.offset_changed.connect(self._on_lyrics_offset)
-            self._ambient.closed.connect(self._on_ambient_closed)
+            a = self._ambient
+            a.lyrics.seek_requested.connect(self.seek_clicked)
+            a.lyrics.offset_changed.connect(self._on_lyrics_offset)
+            # every ambient control routes through the widget's existing
+            # plumbing; the ambient window itself holds no backend logic
+            a.progress.seek_requested.connect(self._on_seek)
+            a.btn_play.clicked.connect(self.playpause_clicked)
+            a.btn_prev.clicked.connect(self.prev_clicked)
+            a.btn_next.clicked.connect(self.next_clicked)
+            a.btn_shuffle.clicked.connect(self.shuffle_clicked)
+            a.btn_repeat.clicked.connect(self.repeat_clicked)
+            a.btn_heart.clicked.connect(self._on_heart)
+            self._wire_heart_menu(a.btn_heart)   # right-click: add to playlist
+            a.vol.valueChanged.connect(self._on_vol_changed)
+            a.btn_mute.clicked.connect(self._on_mute)
+            a.closed.connect(self._on_ambient_closed)
         self._sync_ambient(full=True)
         self._ambient.show_on(self._current_screen())
         self._update_timer()   # keep the position tick alive for the ambient view
@@ -1541,11 +1591,35 @@ class NowPlayingWidget(QWidget):
             return
         a.set_accent(self._effective_accent())
         if full:
-            a.set_track(self._cover_src, self._cur_title, self._cur_artist)
+            # A fresh window (WA_DeleteOnClose forgets everything on close)
+            # gets the complete current state, not just track + lyrics.
+            a.set_track(self._cover_src, self._cur_title, self._cur_artist,
+                        self._cur_album)
             a.set_lines(self.e_lyrics._lines)
+            a.set_quality(self._quality)
+            a.set_liked(self._liked)
+            a.set_shuffle_repeat(self._shuffle, self._repeat,
+                                 self._can_shuffle, self._can_repeat)
+            self._push_ambient_caps()
+            self._push_ambient_volume()
         a.set_progress(self._pos, self._dur, self._playing)
         a.set_playing(self._playing)
         a.set_position(self._pos)
+
+    def _push_ambient_caps(self):
+        if self._ambient is not None:
+            self._ambient.set_capabilities(self._can_seek, self._can_prev,
+                                           self._can_next, self._can_play)
+
+    def _push_ambient_volume(self):
+        # The ambient slider feeds _on_vol_changed like the card's sliders do,
+        # so the programmatic setValue must not echo back as a volume_changed.
+        if self._ambient is None:
+            return
+        self._vol_updating = True
+        self._ambient.set_volume_state(self._vol_level, self._muted,
+                                       self._vol_scope)
+        self._vol_updating = False
 
     def _toggle_lyrics(self):
         self._set_lyrics_mode(not self._lyrics_mode)
@@ -1623,6 +1697,10 @@ class NowPlayingWidget(QWidget):
 
     def _set_mode(self, expanded: bool, anchor: bool = True):
         self._expanded = expanded
+        # keep the tray's "Compact mode" checkmark in sync, however the mode
+        # was flipped (toggle button, double-click, tray, context menu)
+        if getattr(self, "act_mode", None) is not None:
+            self.act_mode.setChecked(not expanded)
         card_w, card_h = EXPANDED_CARD if expanded else COMPACT_CARD
         new_w, new_h = card_w + 2 * MARGIN, card_h + 2 * MARGIN
 
@@ -1663,11 +1741,20 @@ class NowPlayingWidget(QWidget):
             self.e_dur.setText("--:--")
             self._cur_title = self._cur_artist = self._cur_album = ""
             self._liked = False
-            self._refresh_heart()
+            self._refresh_heart()   # also resets the ambient heart
+            self._can_seek = self._can_shuffle = self._can_repeat = False
+            self._quality = ""
             self.progress.set_seekable(False)
             self.e_shuffle.hide()
             self.e_repeat.hide()
             self.e_quality.hide()
+            if self._ambient is not None:
+                self._ambient.set_capabilities(False, self._can_prev,
+                                               self._can_next, self._can_play)
+                self._ambient.set_shuffle_repeat(self._shuffle, self._repeat,
+                                                 False, False)
+                self._ambient.set_quality("")
+                self._ambient.set_playing(False)
             self.e_lyrics.set_lines([])
             self.c_lyrics_btn.hide()
             self.e_lyrics_btn.hide()
@@ -1687,6 +1774,7 @@ class NowPlayingWidget(QWidget):
             self._cover_hires = False  # SMTC thumbnail owns the art again
             self._cover_bytes = None
             self.e_quality.hide()      # clear the quality badge until it resolves
+            self._quality = ""
             for b in (self.c_lyrics_btn, self.e_lyrics_btn):
                 b.show()
                 b.setEnabled(False)   # signifier while we check / if none
@@ -1694,7 +1782,9 @@ class NowPlayingWidget(QWidget):
             self.e_lyrics.set_loading()
             if self._ambient is not None:
                 self._ambient.set_loading()
-                self._ambient.set_track(None, title, artist)
+                self._ambient.set_track(None, title, artist,
+                                        info.get("album") or "")
+                self._ambient.set_quality("")
         self._cur_title, self._cur_artist = title, artist
         self._cur_album = info.get("album") or ""
         self._refresh_heart()
@@ -1988,18 +2078,11 @@ class NowPlayingWidget(QWidget):
         # right-click menu carries only the management actions (no transport, to
         # avoid duplicating the buttons). The tray icon keeps the FULL menu for
         # when the widget is hidden.
+        # Groups mirror the tray menu: track actions / TIDAL navigation /
+        # view / housekeeping.
         menu = QMenu(self)
         menu.setToolTipsVisible(True)
-        act_open = QAction("Open TIDAL", self)
-        act_open.triggered.connect(self._open_tidal)
-        menu.addAction(act_open)
-        act_web = QAction("TIDAL web player", self)
-        act_web.triggered.connect(self._open_web_player)
-        menu.addAction(act_web)
-        act_radio = QAction("Track radio (more like this)", self)
-        act_radio.setEnabled(self._logged_in and bool(self._cur_title))
-        act_radio.triggered.connect(self._on_radio_clicked)
-        menu.addAction(act_radio)
+        # track actions
         act_copy = QAction("Copy now playing", self)
         act_copy.triggered.connect(self._copy_now_playing)
         menu.addAction(act_copy)
@@ -2007,16 +2090,23 @@ class NowPlayingWidget(QWidget):
         act_cover.setEnabled(self._cover_src is not None)
         act_cover.triggered.connect(self._save_cover)
         menu.addAction(act_cover)
-        if not self._logged_in:
-            act_signin = QAction("Sign in to TIDAL", self)
-            act_signin.setToolTip(SIGNIN_HINT)
-            act_signin.triggered.connect(lambda: self.signin_requested.emit())
-            menu.addAction(act_signin)
-        act_updates = QAction("Check for updates...", self)
-        act_updates.triggered.connect(lambda: self.check_updates_requested.emit())
-        menu.addAction(act_updates)
+        act_radio = QAction("Track radio (more like this)", self)
+        act_radio.setEnabled(self._logged_in and bool(self._cur_title))
+        act_radio.triggered.connect(self._on_radio_clicked)
+        menu.addAction(act_radio)
         menu.addSeparator()
-        act_mode = QAction("Compact" if self._expanded else "Expand", self)
+        # TIDAL navigation
+        act_open = QAction("Open TIDAL", self)
+        act_open.triggered.connect(self._open_tidal)
+        menu.addAction(act_open)
+        act_web = QAction("TIDAL web player", self)
+        act_web.triggered.connect(self._open_web_player)
+        menu.addAction(act_web)
+        menu.addSeparator()
+        # view
+        act_mode = QAction("Compact mode", self)
+        act_mode.setCheckable(True)
+        act_mode.setChecked(not self._expanded)
         act_mode.triggered.connect(self.toggle_mode)
         menu.addAction(act_mode)
         act_amb = QAction("Fullscreen now playing", self)
@@ -2027,10 +2117,19 @@ class NowPlayingWidget(QWidget):
             act_hide.triggered.connect(self._hide_widget)
             menu.addAction(act_hide)
         menu.addSeparator()
+        # housekeeping
+        if not self._logged_in:
+            act_signin = QAction("Sign in to TIDAL", self)
+            act_signin.setToolTip(SIGNIN_HINT)
+            act_signin.triggered.connect(lambda: self.signin_requested.emit())
+            menu.addAction(act_signin)
+        act_updates = QAction("Check for updates...", self)
+        act_updates.triggered.connect(lambda: self.check_updates_requested.emit())
+        menu.addAction(act_updates)
         act_settings = QAction("Settings...", self)
         act_settings.triggered.connect(lambda: self.settings_requested.emit())
         menu.addAction(act_settings)
         act_quit = QAction("Quit", self)
         act_quit.triggered.connect(lambda: self.quit_requested.emit())
         menu.addAction(act_quit)
-        menu.exec(e.globalPos())
+        self._exec_menu(menu, e.globalPos())
