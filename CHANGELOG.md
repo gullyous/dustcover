@@ -5,6 +5,30 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-03
+
+### Added
+- **Add to playlist:** right-click the heart to drop the playing track into any
+  of your TIDAL playlists, or a brand-new one, without opening TIDAL.
+- **Discord Rich Presence:** show "Listening to TIDAL" on your Discord profile
+  with the cover, title, artist, and a live progress bar. Off by default; set a
+  Discord Application ID in Settings > Integrations to enable.
+- **ListenBrainz scrobbling:** submit your plays to an open, private listening
+  history automatically. Off by default; paste a user token in Settings. Only
+  TIDAL plays are submitted, and only after you've actually played enough of a
+  track (paused time never counts).
+- **Fullscreen now playing:** a tray item turns a monitor into an Apple-TV-style
+  screen with a big blurred-cover wash, large art, title/artist, progress, and
+  the karaoke lyrics at room scale. Esc or click to exit.
+- **OBS overlay:** an optional localhost-only server that serves a dark-glass
+  now-playing lower-third at http://127.0.0.1:<port>/overlay, ready to drop into
+  OBS as a Browser source. Off by default (Settings > Integrations).
+
+### Changed
+- Preferences gained an **Integrations** tab for the account/streaming features.
+- Development now ships with a real test suite (`tests/`) and CI runs it on every
+  push and pull request, not only on release tags.
+
 ## [1.4.5] - 2026-07-02
 
 ### Changed

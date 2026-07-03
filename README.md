@@ -35,7 +35,9 @@ no API keys and no setup. Signing in is only needed for the optional extras
 - System-tray icon with full controls and quit
 - Volume slider (in both the compact bar and the expanded card) for the playing app, via Windows Core Audio, with a mute toggle and a system-volume fallback
 - Synced (karaoke) lyrics in the expanded view: the active line fills with the accent color in time with the vocal (a karaoke "wipe"), auto-scrolls, and you can click a line to seek. Countdown dots show when the next line lands after an instrumental break. Scroll to nudge the timing when a track's lyrics drift (middle-click resets). Right-click to copy a line or the whole lyric. Tracks with only plain (unsynced) lyrics show them as a scroll-through block. From LRCLIB (free); a dimmed lyrics button signals when a track has none
-- Heart button to favorite the playing track to your TIDAL collection, or un-favorite one that is already in it (the heart reflects your real collection when signed in). Optional, one-time sign-in
+- Heart button to favorite the playing track to your TIDAL collection, or un-favorite one that is already in it (the heart reflects your real collection when signed in). Right-click the heart to add the track to any of your TIDAL playlists (or a new one). Optional, one-time sign-in
+- Fullscreen "now playing" mode (tray menu): a big blurred-cover wash with room-scale karaoke lyrics
+- Optional integrations (Settings, all off by default): Discord Rich Presence ("Listening to TIDAL"), ListenBrainz scrobbling, and a localhost OBS now-playing overlay
 - Track radio: open a TIDAL mix seeded from the playing song ("more like this"), from the tray or right-click menu (needs sign-in)
 - Full-res cover art: when signed in, the small system thumbnail is silently swapped for TIDAL's high-resolution cover, and "Save cover art..." saves it to disk
 - Duotone accent: with auto-accent on, the play button and progress bar carry a two-color gradient sampled from the album art
