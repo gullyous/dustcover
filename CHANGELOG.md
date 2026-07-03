@@ -3,7 +3,12 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.5.4] - 2026-07-03
+
+### Fixed
+- **v1.5.3's "Fullscreen now playing" crashed on open.** The 1.5.3 release was
+  cut while this feature was mid-flight and caught half of its wiring; 1.5.4
+  ships the completed feature.
 
 ### Added
 - **Fullscreen "now playing" is now a full player.** The ambient view gains
