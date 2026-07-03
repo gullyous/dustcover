@@ -1850,7 +1850,8 @@ class NowPlayingWidget(QWidget):
             self._accent_dyn = self._accent2_dyn = None
         self._apply_accent()
         if self._ambient is not None and self._ambient.isVisible():
-            self._ambient.set_track(self._cover_src, self._cur_title, self._cur_artist)
+            self._ambient.set_track(self._cover_src, self._cur_title,
+                                    self._cur_artist, self._cur_album)
             self._ambient.set_accent(self._effective_accent())
 
     def on_cover_hires(self, title, artist, data):
@@ -1897,18 +1898,26 @@ class NowPlayingWidget(QWidget):
 
     # ---- transport capabilities + shuffle/repeat ---------------------------
     def _apply_caps(self, info):
-        self.progress.set_seekable(bool(info.get("can_seek")))
+        # remembered so a freshly (re)created ambient window can be re-pushed
+        self._can_seek = bool(info.get("can_seek"))
+        self._can_prev = bool(info.get("can_prev", True))
+        self._can_next = bool(info.get("can_next", True))
+        self._can_play = bool(info.get("can_playpause", True))
+        self._can_shuffle = bool(info.get("can_shuffle"))
+        self._can_repeat = bool(info.get("can_repeat"))
+        self.progress.set_seekable(self._can_seek)
         for b in (self.c_prev, self.e_prev):
-            b.setEnabled(bool(info.get("can_prev", True)))
+            b.setEnabled(self._can_prev)
         for b in (self.c_next, self.e_next):
-            b.setEnabled(bool(info.get("can_next", True)))
+            b.setEnabled(self._can_next)
         for b in self._play_buttons:
-            b.setEnabled(bool(info.get("can_playpause", True)))
-        self.e_shuffle.setVisible(bool(info.get("can_shuffle")))
-        self.e_repeat.setVisible(bool(info.get("can_repeat")))
+            b.setEnabled(self._can_play)
+        self.e_shuffle.setVisible(self._can_shuffle)
+        self.e_repeat.setVisible(self._can_repeat)
         self._shuffle = bool(info.get("shuffle"))
         self._repeat = int(info.get("repeat", 0))
         self._refresh_shuffle_repeat()
+        self._push_ambient_caps()
 
     def _refresh_shuffle_repeat(self):
         acc = self._effective_accent()
@@ -1920,6 +1929,9 @@ class NowPlayingWidget(QWidget):
             self.e_repeat.setIcon(icons.repeat_icon(acc))
         else:
             self.e_repeat.setIcon(icons.repeat_icon(SUBTLE))
+        if self._ambient is not None:
+            self._ambient.set_shuffle_repeat(self._shuffle, self._repeat,
+                                             self._can_shuffle, self._can_repeat)
 
     def _on_seek(self, frac):
         if self._dur > 0:
@@ -1927,6 +1939,11 @@ class NowPlayingWidget(QWidget):
             self._pos = secs
             self._anchor = time.monotonic()
             self._update_progress(secs)
+            if self._ambient_open():
+                # reflect the scrub immediately (the 200ms tick may be idle
+                # while paused); keeps the ambient bar and lyrics in step
+                self._ambient.set_progress(secs, self._dur, self._playing)
+                self._ambient.set_position(secs)
             self.seek_clicked.emit(secs)
 
     def _refresh_covers(self):

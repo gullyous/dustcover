@@ -5,6 +5,17 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Fullscreen "now playing" is now a full player.** The ambient view gains
+  previous/play/next transport, shuffle and repeat, the heart (with the
+  right-click add-to-playlist menu), a quality badge, an album line, a volume
+  slider with mute, and a seekable progress bar, all reusing the widget's
+  existing controls and state. The controls and mouse cursor fade away
+  Apple-TV-style after a few idle seconds and wake on mouse movement. Space
+  toggles play/pause, Left/Right seek 10 seconds, and closing moved to
+  Esc/F11, a close button, or a background double-click (a single click now
+  wakes the controls instead of closing).
+
 ## [1.5.3] - 2026-07-03
 
 ### Changed
