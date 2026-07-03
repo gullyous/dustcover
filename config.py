@@ -18,6 +18,13 @@ FALLBACK_TO_ANY = True
 # How often (milliseconds) to refresh the now-playing info.
 POLL_MS = 500
 
+# What the volume slider (and mute button) control:
+#   "system" - the Windows system volume, exactly like your keyboard volume
+#              keys and the taskbar speaker (they all move together).
+#   "app"    - only the playing app's own volume (TIDAL, or your browser for
+#              the web player), like the Windows Volume Mixer's per-app slider.
+VOLUME_SCOPE = "system"
+
 # Accent color used for the play button and progress bar.
 ACCENT = "#39d6e0"
 
@@ -61,7 +68,7 @@ ALWAYS_ON_TOP = True
 HOTKEYS_ENABLED = True
 
 # App version, shown in Settings -> About.
-APP_VERSION = "1.4.3"
+APP_VERSION = "1.4.4"
 
 # Check GitHub for a newer release on startup (silent), and enable the tray
 # "Check for updates..." item. The check sends your app version and IP to

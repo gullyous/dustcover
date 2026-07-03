@@ -6,15 +6,19 @@ volume_backend.py
 -----------------
 Per-application volume control via the Windows Core Audio APIs (pycaw).
 
-SMTC carries no volume, so this controls the audio-session volume of whichever
-app is playing (exactly what the Windows Volume Mixer shows per app), with a
-system-master fallback. The followed app is matched by executable name derived
-from config.MATCH_APP ("tidal") plus a browser list (for the TIDAL web player).
+SMTC carries no volume, so this controls a volume level and reports it back for
+the slider. Two scopes, chosen by config.VOLUME_SCOPE:
 
-The reported level is the EFFECTIVE (audible) volume: the app session scaled by
-the system master. That keeps the widget's slider in step with keyboard volume
-keys and the Windows mixer, which change the master, not the app session.
-Setting the slider adjusts the app session relative to the master ceiling.
+  "system" (default): the slider IS the Windows system volume (the endpoint
+      master). Dragging it moves the same level your keyboard volume keys and
+      the taskbar speaker do, so everything stays in lock-step.
+  "app": the per-app session volume of whichever app is playing (what the
+      Windows Volume Mixer shows per app), with a system-master fallback. The
+      reported level is the EFFECTIVE (audible) value, the app session scaled by
+      the master, so it still follows the master; setting it adjusts the app
+      session relative to the master ceiling. The followed app is matched by
+      executable name from config.MATCH_APP ("tidal") plus a browser list (for
+      the TIDAL web player).
 
 All COM work happens on a dedicated background thread with its own COM apartment,
 so it never interferes with the WinRT (winsdk) worker. The whole feature degrades
@@ -51,6 +55,12 @@ _BROWSERS = ("msedge", "chrome", "firefox", "brave", "opera", "vivaldi")
 
 def available():
     return _OK
+
+
+def _scope():
+    """'system' (control the Windows master) or 'app' (per-app session)."""
+    s = (str(getattr(config, "VOLUME_SCOPE", "system") or "system")).lower()
+    return "app" if s == "app" else "system"
 
 
 # ---- COM apartment (dedicated worker thread) -------------------------------
@@ -135,25 +145,32 @@ def _endpoint():
 _CACHE_TTL = 2.0
 
 
-def _cached(cache, source):
-    if (cache.get("source") != source or "vols" not in cache
+def _cached(cache, source, mode):
+    if (cache.get("source") != source or cache.get("mode") != mode
+            or "vols" not in cache
             or time.monotonic() - cache.get("t", 0.0) > _CACHE_TTL):
-        scope, vols = _pick(source)
+        # In "system" mode we control the endpoint master only, so skip the
+        # (expensive) per-app session enumeration entirely.
+        if mode == "system":
+            label, vols = "System", []
+        else:
+            label, vols = _pick(source)
         try:
             ep = _endpoint()
         except Exception:
             ep = None
         cache.clear()
-        cache.update(source=source, scope=scope, vols=vols, ep=ep,
+        cache.update(source=source, mode=mode, label=label, vols=vols, ep=ep,
                      t=time.monotonic())
     return cache
 
 
 def _get_state(source, cache):
+    mode = _scope()
     def read():
-        c = _cached(cache, source)
-        vols, ep, scope = c["vols"], c["ep"], c["scope"]
-        if vols:
+        c = _cached(cache, source, mode)
+        vols, ep, label = c["vols"], c["ep"], c["label"]
+        if vols:   # app mode with a live session
             v = vols[0]
             app_level = float(v.GetMasterVolume())
             app_mute = bool(v.GetMute())
@@ -162,9 +179,9 @@ def _get_state(source, cache):
                 # Reporting the product keeps the slider in step with keyboard
                 # volume keys and the Windows mixer (which change the master).
                 master = float(ep.GetMasterVolumeLevelScalar())
-                return (app_level * master, app_mute or bool(ep.GetMute()), scope)
-            return (app_level, app_mute, scope)
-        if ep is not None:
+                return (app_level * master, app_mute or bool(ep.GetMute()), label)
+            return (app_level, app_mute, label)
+        if ep is not None:   # system mode, or app mode with no session found
             return (float(ep.GetMasterVolumeLevelScalar()), bool(ep.GetMute()),
                     "System")
         return None
@@ -184,8 +201,9 @@ def _ramp_steps(cur, target, gentle):
 
 
 def _set_volume(source, level, cache, gentle=False):
+    mode = _scope()
     def write():
-        c = _cached(cache, source)
+        c = _cached(cache, source, mode)
         vols, ep = c["vols"], c["ep"]
         if vols:
             target = level
@@ -224,8 +242,9 @@ def _set_volume(source, level, cache, gentle=False):
 
 
 def _set_mute(source, muted, cache):
+    mode = _scope()
     def write():
-        c = _cached(cache, source)
+        c = _cached(cache, source, mode)
         vols, ep = c["vols"], c["ep"]
         if vols:
             for v in vols:

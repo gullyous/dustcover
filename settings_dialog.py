@@ -169,6 +169,13 @@ class SettingsDialog(QDialog):
         self.startexp.setChecked(bool(cur["start_expanded"]))
         self.fallback = QCheckBox("Follow other apps when TIDAL isn't playing")
         self.fallback.setChecked(bool(cur["fallback_any"]))
+        self.vol_system = QCheckBox("Volume slider controls the Windows system volume")
+        self.vol_system.setToolTip(
+            "On: the slider moves the system volume, in step with your keyboard "
+            "volume keys.\nOff: it controls only the playing app's own volume "
+            "(TIDAL / your browser).")
+        self.vol_system.setChecked(
+            str(cur.get("volume_scope", "system")).lower() != "app")
         self.hide_fs = QCheckBox("Hide while a fullscreen app is running (game mode)")
         self.hide_fs.setChecked(bool(cur.get("hide_fullscreen", True)))
         self.live_tray = QCheckBox("Live tray icon (album art + progress ring)")
@@ -188,6 +195,7 @@ class SettingsDialog(QDialog):
         bl.addWidget(self.aot)
         bl.addWidget(self.startexp)
         bl.addWidget(self.fallback)
+        bl.addWidget(self.vol_system)
         bl.addWidget(self.hide_fs)
         bl.addWidget(self.live_tray)
         bl.addLayout(poll_row)
@@ -335,6 +343,7 @@ class SettingsDialog(QDialog):
             "always_on_top": self.aot.isChecked(),
             "start_expanded": self.startexp.isChecked(),
             "fallback_any": self.fallback.isChecked(),
+            "volume_scope": "system" if self.vol_system.isChecked() else "app",
             "hide_fullscreen": self.hide_fs.isChecked(),
             "live_tray": self.live_tray.isChecked(),
             "hotkeys_enabled": self.hotkeys.isChecked(),

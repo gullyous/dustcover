@@ -34,6 +34,7 @@ FIELDS = {
     "hide_fullscreen": ("HIDE_ON_FULLSCREEN", bool),
     "live_tray": ("LIVE_TRAY", bool),
     "fallback_any": ("FALLBACK_TO_ANY", bool),
+    "volume_scope": ("VOLUME_SCOPE", str),
     "poll_ms": ("POLL_MS", int),
     "hotkeys_enabled": ("HOTKEYS_ENABLED", bool),
     "check_updates": ("CHECK_UPDATES", bool),
