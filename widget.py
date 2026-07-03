@@ -241,12 +241,15 @@ class LyricsView(QWidget):
     LINE_H = 34
     STEP = 0.1        # seconds per scroll notch when nudging the sync offset
     MAX_OFFSET = 5.0  # clamp for the sync nudge
+    ACTIVE_LEAD = 0.06  # highlight a line this many seconds early (tight for rap)
+    EDGE_FADE = 48.0    # px over which lines fade out at the top/bottom edges
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._lines = []      # [(seconds_or_None, text)]; None time = plain line
         self._synced = False  # True once the lines carry timestamps (karaoke)
         self._active = -1
+        self._line_bounds = []  # [(y_top, y_bottom, line_index)] from last paint
         self._msg = ""
         self._scroll = 0.0    # px scroll position for plain (unsynced) lyrics
         self._last_sec = None  # last playback position seen (re-highlight on nudge)
@@ -327,13 +330,19 @@ class LyricsView(QWidget):
         eff = sec + self._offset
         a = -1
         for i, (t, _txt) in enumerate(self._lines):
-            if t is not None and t <= eff + 0.15:
+            if t is not None and t <= eff + self.ACTIVE_LEAD:
                 a = i
             else:
                 break
         if a != self._active:
             self._active = a
             self.update()
+
+    def _edge_fade(self, y, h):
+        """Opacity multiplier (0..1) that fades a line out near the top and
+        bottom edges, so lyrics don't collide with the title/artist header or
+        the controls below. 1.0 through the middle."""
+        return max(0.0, min(1.0, y / self.EDGE_FADE, (h - y) / self.EDGE_FADE))
 
     def _max_scroll(self):
         content = len(self._lines) * self.LINE_H
@@ -375,9 +384,17 @@ class LyricsView(QWidget):
             return
         if e.button() != Qt.LeftButton or not self._synced:
             return
-        act = self._active if self._active >= 0 else 0
-        idx = act + round((e.position().y() - self.height() / 2) / self.LINE_H)
-        if 0 <= idx < len(self._lines):
+        y = e.position().y()
+        idx = None
+        for top, bot, i in self._line_bounds:   # exact hit-test from last paint
+            if top <= y < bot:
+                idx = i
+                break
+        if idx is None and self._line_bounds:
+            # clicked in a gap: snap to the nearest drawn line
+            idx = min(self._line_bounds,
+                      key=lambda b: abs((b[0] + b[1]) / 2 - y))[2]
+        if idx is not None and 0 <= idx < len(self._lines):
             t = self._lines[idx][0]
             if t is not None:
                 self.seek_requested.emit(max(0.0, t - self._offset))
@@ -449,45 +466,93 @@ class LyricsView(QWidget):
         frac = (eff - t0) / dur
         return 0.0 if frac < 0 else 1.0 if frac > 1 else frac
 
+    def _wrap(self, text, fm, maxw, max_rows=3):
+        """Word-wrap `text` to `maxw`, at most `max_rows` rows (last elided)."""
+        words = (text or "").split()
+        if not words:
+            return [""]
+        rows, cur, i = [], "", 0
+        while i < len(words):
+            word = words[i]
+            trial = word if not cur else cur + " " + word
+            if not cur or fm.horizontalAdvance(trial) <= maxw:
+                cur, i = trial, i + 1
+            else:
+                rows.append(cur)
+                cur = ""
+                if len(rows) == max_rows - 1:   # last row: dump the rest, elided
+                    rest = " ".join(words[i:])
+                    rows.append(fm.elidedText(rest, Qt.ElideRight, maxw))
+                    return rows
+        if cur:
+            rows.append(cur)
+        return rows
+
     def _paint_synced(self, p, w, h):
         cy = h / 2
         eff = self._now_eff()
         act = self._active if self._active >= 0 else 0
-        for i, (_t, txt) in enumerate(self._lines):
-            y = cy + (i - act) * self.LINE_H
-            if y < -self.LINE_H or y > h + self.LINE_H:
-                continue
-            f = p.font()
-            if i == self._active:
-                f.setPointSize(15)
-                f.setBold(True)
-            else:
-                col = QColor(255, 255, 255)
-                col.setAlpha(max(110, 225 - abs(i - act) * 32))
-                p.setPen(col)
-                f.setPointSize(12)
-                f.setBold(False)
-            p.setFont(f)
-            fm = QFontMetrics(f)
-            line = fm.elidedText(txt, Qt.ElideRight, w - 24)
-            rect = QRectF(12, y - self.LINE_H / 2, w - 24, self.LINE_H)
-            if i != self._active:
-                p.drawText(rect, Qt.AlignCenter, line)
-                continue
-            # active line: white base, then an accent "karaoke wipe" clipped to
-            # the sung fraction (interpolated between this and the next line)
-            p.setPen(QColor(255, 255, 255, 235))
-            p.drawText(rect, Qt.AlignCenter, line)
-            frac = self._wipe_frac(eff)
-            if frac > 0:
-                textw = fm.horizontalAdvance(line)
-                left = 12 + (w - 24 - textw) / 2
+        maxw = w - 24
+        self._line_bounds = []
+
+        # ---- active line: wrapped and shown IN FULL (no "..." on dense rap),
+        #      centred, with the karaoke wipe flowing across its rows ----
+        f_act = p.font(); f_act.setPointSize(15); f_act.setBold(True)
+        fm_act = QFontMetrics(f_act)
+        rows = self._wrap(self._lines[act][1], fm_act, maxw)
+        act_h = len(rows) * self.LINE_H
+        act_top = cy - act_h / 2
+        p.setFont(f_act)
+        frac = self._wipe_frac(eff)
+        total_w = sum(fm_act.horizontalAdvance(r) for r in rows) or 1.0
+        fill = frac * total_w
+        cum = 0.0
+        for r, row in enumerate(rows):
+            y = act_top + r * self.LINE_H
+            edge = self._edge_fade(y + self.LINE_H / 2, h)
+            rect = QRectF(12, y, maxw, self.LINE_H)
+            rw = fm_act.horizontalAdvance(row)
+            left = 12 + (maxw - rw) / 2
+            p.setPen(QColor(255, 255, 255, int(235 * edge)))
+            p.drawText(rect, Qt.AlignCenter, row)
+            row_fill = max(0.0, min(rw, fill - cum))
+            if row_fill > 0:
+                acc = QColor(self.accent); acc.setAlpha(int(255 * edge))
                 p.save()
-                p.setClipRect(QRectF(left, rect.top(), textw * frac, self.LINE_H))
-                p.setPen(QColor(self.accent))
-                p.drawText(rect, Qt.AlignCenter, line)
+                p.setClipRect(QRectF(left, y, row_fill, self.LINE_H))
+                p.setPen(acc)
+                p.drawText(rect, Qt.AlignCenter, row)
                 p.restore()
+            cum += rw
+        self._line_bounds.append((act_top, act_top + act_h, act))
+
+        # ---- neighbours: single-line context above/below the active block ----
+        f_norm = p.font(); f_norm.setPointSize(12); f_norm.setBold(False)
+        p.setFont(f_norm)
+        fm_norm = QFontMetrics(f_norm)
+        GAP = 6
+        yb = act_top + act_h + GAP
+        i = act + 1
+        while i < len(self._lines) and yb < h:
+            self._draw_neighbor(p, i, act, yb, w, h, fm_norm)
+            self._line_bounds.append((yb, yb + self.LINE_H, i))
+            yb += self.LINE_H; i += 1
+        ya = act_top - GAP - self.LINE_H
+        i = act - 1
+        while i >= 0 and ya + self.LINE_H > 0:
+            self._draw_neighbor(p, i, act, ya, w, h, fm_norm)
+            self._line_bounds.append((ya, ya + self.LINE_H, i))
+            ya -= self.LINE_H; i -= 1
+
         self._paint_countdown(p, w, cy, eff)
+
+    def _draw_neighbor(self, p, i, act, y, w, h, fm):
+        edge = self._edge_fade(y + self.LINE_H / 2, h)
+        col = QColor(255, 255, 255)
+        col.setAlpha(int(max(110, 225 - abs(i - act) * 32) * edge))
+        p.setPen(col)
+        line = fm.elidedText(self._lines[i][1], Qt.ElideRight, w - 24)
+        p.drawText(QRectF(12, y, w - 24, self.LINE_H), Qt.AlignCenter, line)
 
     def _paint_countdown(self, p, w, cy, eff):
         """Three draining dots during long instrumental gaps, so you know when
@@ -520,13 +585,16 @@ class LyricsView(QWidget):
 
     def _paint_plain(self, p, w, h):
         f = p.font(); f.setPointSize(12); f.setBold(False); p.setFont(f)
-        p.setPen(QColor(235, 235, 240))
         fm = QFontMetrics(f)
         top = 12 - self._scroll
         for i, (_t, txt) in enumerate(self._lines):
             y = top + i * self.LINE_H
             if y < -self.LINE_H or y > h + self.LINE_H:
                 continue
+            edge = self._edge_fade(y + self.LINE_H / 2, h)
+            col = QColor(235, 235, 240)
+            col.setAlpha(int(255 * edge))
+            p.setPen(col)
             line = fm.elidedText(txt, Qt.ElideRight, w - 24)
             p.drawText(QRectF(12, y, w - 24, self.LINE_H),
                        Qt.AlignCenter, line)
@@ -879,8 +947,10 @@ class NowPlayingWidget(QWidget):
         col.addLayout(cover_row)
         col.addSpacing(10)
         col.addWidget(self.e_title)
+        col.addSpacing(2)                   # clearer gap between title and artist
         col.addWidget(self.e_artist)
         col.addLayout(quality_row)
+        col.addSpacing(4)                   # header breathes before the lyrics
         col.addWidget(self.e_lyrics, 100)   # fills the cover area when in lyrics mode
         col.addStretch(1)
         col.addWidget(self.progress)
