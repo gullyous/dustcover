@@ -148,6 +148,11 @@ def main():
     liker.cover_ready.connect(widget.on_cover_hires)
     widget.radio_requested.connect(liker.radio)           # "more like this"
     liker.radio_result.connect(widget.on_radio)
+    widget.playlists_requested.connect(liker.request_playlists)   # add-to-playlist
+    liker.playlists_ready.connect(widget.on_playlists)
+    widget.add_to_playlist_requested.connect(liker.add_to_playlist)
+    widget.create_playlist_requested.connect(liker.create_playlist_with)
+    liker.playlist_result.connect(widget.on_playlist_result)
     widget.on_login_state(liker.signed_in(), "")  # hide "Sign in" if already signed in
 
     # game mode: hide while a fullscreen app owns the widget's monitor
@@ -275,6 +280,35 @@ def main():
     worker.updated.connect(
         lambda info: volume.set_source(info.get("source", "") if info.get("available") else ""))
 
+    # optional Discord Rich Presence ("Listening to TIDAL")
+    from discord_backend import DiscordPresence
+    discord = DiscordPresence()
+    worker.updated.connect(discord.on_update)
+    liker.cover_url.connect(discord.set_cover)
+    discord.set_enabled(getattr(config, "DISCORD_RPC", False))
+
+    # optional ListenBrainz scrobbling
+    from scrobble_backend import Scrobbler
+    scrobbler = Scrobbler()
+    worker.updated.connect(scrobbler.on_update)
+    scrobbler.set_enabled(getattr(config, "SCROBBLE_LISTENBRAINZ", False))
+
+    # optional OBS overlay server (localhost only)
+    from obs_overlay import OverlayServer, state_from_info, cover_data_uri
+    overlay = OverlayServer()
+    _overlay_cover = {"uri": None}
+
+    def _overlay_feed(info):
+        if info.get("art_changed"):
+            _overlay_cover["uri"] = cover_data_uri(info.get("art"))
+        if not info.get("available"):
+            _overlay_cover["uri"] = None
+        overlay.set_state(state_from_info(info, widget._effective_accent(),
+                                          _overlay_cover["uri"]))
+    worker.updated.connect(_overlay_feed)
+    if getattr(config, "OBS_OVERLAY", False):
+        overlay.start(getattr(config, "OBS_OVERLAY_PORT", 8787))
+
     # global hotkeys (optional; needs pynput)
     hotkeys = HotkeyManager()
     hotkeys.play_pause.connect(worker.play_pause)
@@ -292,6 +326,9 @@ def main():
         cmd_server.close()
         updater.stop()
         volume.stop()
+        discord.stop()
+        scrobbler.stop()
+        overlay.stop()
         worker.stop()
         worker.wait(2000)
         hotkeys.stop()
@@ -306,6 +343,13 @@ def main():
             settings.save({k: val for k, val in v.items() if k != "run_at_startup"})
             settings.set_run_at_startup(v["run_at_startup"])
             widget.apply_settings()
+            discord.set_enabled(config.DISCORD_RPC)
+            scrobbler.set_enabled(config.SCROBBLE_LISTENBRAINZ)
+            if config.OBS_OVERLAY:
+                if overlay.port() != config.OBS_OVERLAY_PORT:
+                    overlay.start(config.OBS_OVERLAY_PORT)   # (re)bind on port change
+            else:
+                overlay.stop()
             if config.HOTKEYS_ENABLED and hotkeys.available():
                 hotkeys.start()
             else:

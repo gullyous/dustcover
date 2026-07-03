@@ -69,6 +69,10 @@ pynput (global hotkeys)
     License: LGPL v3
     https://github.com/moses-palmer/pynput
 
+pypresence (Discord Rich Presence)
+    License: MIT
+    https://github.com/qwertyquerty/pypresence
+
 ================================================================
 This is an unofficial tool. It is not affiliated with, endorsed by, or
 sponsored by TIDAL or Aspiro AB. "TIDAL" is a trademark of its respective owner.
@@ -113,6 +117,7 @@ def _release_notes():
 
 class SettingsDialog(QDialog):
     check_updates_clicked = Signal()   # Updates tab "Check for updates" button
+    _lb_checked = Signal(bool, str)    # ListenBrainz token-verify result (worker -> UI)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -127,6 +132,7 @@ class SettingsDialog(QDialog):
 
         tabs = QTabWidget()
         tabs.addTab(self._build_general_tab(cur), "General")
+        tabs.addTab(self._build_integrations_tab(cur), "Integrations")
         tabs.addTab(self._build_updates_tab(cur), "Updates")
         tabs.addTab(self._build_about_tab(), "About")
 
@@ -226,6 +232,92 @@ class SettingsDialog(QDialog):
         v.addWidget(note)
         v.addStretch(1)
         return page
+
+    # ---- Integrations tab --------------------------------------------------
+    def _build_integrations_tab(self, cur):
+        from PySide6.QtWidgets import QLineEdit
+
+        # Discord Rich Presence
+        self.discord_on = QCheckBox("Show what I'm listening to on Discord")
+        self.discord_on.setChecked(bool(cur.get("discord_rpc", False)))
+        self.discord_id = QLineEdit(str(cur.get("discord_client_id", "") or ""))
+        self.discord_id.setPlaceholderText("Discord Application ID")
+        d_hint = QLabel('Create an app at discord.com/developers, paste its '
+                        'Application ID here. Needs the Discord desktop app running.')
+        d_hint.setWordWrap(True); d_hint.setStyleSheet("color:#7d7d86; font-size:10px;")
+        discord = QGroupBox("Discord Rich Presence")
+        dl = QVBoxLayout(discord)
+        dl.addWidget(self.discord_on)
+        dl.addWidget(self.discord_id)
+        dl.addWidget(d_hint)
+
+        # ListenBrainz scrobbling
+        self.lb_on = QCheckBox("Scrobble my plays to ListenBrainz")
+        self.lb_on.setChecked(bool(cur.get("scrobble_listenbrainz", False)))
+        self.lb_token = QLineEdit(str(cur.get("listenbrainz_token", "") or ""))
+        self.lb_token.setEchoMode(QLineEdit.Password)
+        self.lb_token.setPlaceholderText("ListenBrainz user token")
+        verify = QPushButton("Verify token")
+        verify.clicked.connect(self._verify_lb)
+        self._lb_checked.connect(self._on_lb_checked)
+        self._lb_status = QLabel("")
+        self._lb_status.setStyleSheet("color:#9a9aa3; font-size:11px;")
+        lb_row = QHBoxLayout(); lb_row.addWidget(verify, 0, Qt.AlignLeft)
+        lb_row.addWidget(self._lb_status, 1)
+        lb_hint = QLabel("Token from listenbrainz.org/settings. Only TIDAL plays "
+                         "are submitted, and only after you've played enough of a track.")
+        lb_hint.setWordWrap(True); lb_hint.setStyleSheet("color:#7d7d86; font-size:10px;")
+        lbrainz = QGroupBox("ListenBrainz")
+        ll = QVBoxLayout(lbrainz)
+        ll.addWidget(self.lb_on)
+        ll.addWidget(self.lb_token)
+        ll.addLayout(lb_row)
+        ll.addWidget(lb_hint)
+
+        # OBS overlay
+        self.obs_on = QCheckBox("Serve a now-playing overlay for OBS (localhost)")
+        self.obs_on.setChecked(bool(cur.get("obs_overlay", False)))
+        self.obs_port = QSpinBox(); self.obs_port.setRange(1024, 65535)
+        self.obs_port.setValue(int(cur.get("obs_overlay_port", 8787)))
+        obs_row = QHBoxLayout()
+        obs_row.addWidget(QLabel("Port")); obs_row.addStretch(1)
+        obs_row.addWidget(self.obs_port)
+        obs_hint = QLabel("Add a Browser source in OBS pointing at "
+                          "http://127.0.0.1:&lt;port&gt;/overlay. Bound to localhost only.")
+        obs_hint.setWordWrap(True); obs_hint.setStyleSheet("color:#7d7d86; font-size:10px;")
+        obs = QGroupBox("OBS overlay")
+        ol = QVBoxLayout(obs)
+        ol.addWidget(self.obs_on)
+        ol.addLayout(obs_row)
+        ol.addWidget(obs_hint)
+
+        page = QWidget()
+        v = QVBoxLayout(page)
+        v.addWidget(discord)
+        v.addWidget(lbrainz)
+        v.addWidget(obs)
+        v.addStretch(1)
+        return page
+
+    def _verify_lb(self):
+        import threading
+        self._lb_status.setText("Checking...")
+        self._lb_status.setStyleSheet("color:#9a9aa3; font-size:11px;")
+        token = self.lb_token.text()
+
+        def work():
+            try:
+                from scrobble_backend import validate_token
+                ok, msg = validate_token(token)
+            except Exception:
+                ok, msg = False, "error"
+            self._lb_checked.emit(ok, msg)   # queued back to the UI thread
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_lb_checked(self, ok, msg):
+        self._lb_status.setText((f"Valid: {msg}" if ok else f"Invalid: {msg}"))
+        self._lb_status.setStyleSheet(
+            "color:%s; font-size:11px;" % ("#4fd07a" if ok else "#e06a6a"))
 
     # ---- Updates tab -------------------------------------------------------
     def _build_updates_tab(self, cur):
@@ -348,5 +440,11 @@ class SettingsDialog(QDialog):
             "live_tray": self.live_tray.isChecked(),
             "hotkeys_enabled": self.hotkeys.isChecked(),
             "check_updates": self.check_updates.isChecked(),
+            "discord_rpc": self.discord_on.isChecked(),
+            "discord_client_id": self.discord_id.text().strip(),
+            "scrobble_listenbrainz": self.lb_on.isChecked(),
+            "listenbrainz_token": self.lb_token.text().strip(),
+            "obs_overlay": self.obs_on.isChecked(),
+            "obs_overlay_port": self.obs_port.value(),
             "run_at_startup": self.startup.isChecked(),
         }

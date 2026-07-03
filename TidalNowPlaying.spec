@@ -4,7 +4,8 @@ from PyInstaller.utils.hooks import collect_all
 datas = [('CHANGELOG.md', '.')]   # in-app release notes (Settings > Updates)
 binaries = []
 hiddenimports = []
-for _pkg in ('winsdk', 'tidalapi', 'pynput', 'pycaw', 'comtypes', 'psutil'):
+for _pkg in ('winsdk', 'tidalapi', 'pynput', 'pycaw', 'comtypes', 'psutil',
+             'pypresence'):
     try:
         _d, _b, _h = collect_all(_pkg)
         datas += _d

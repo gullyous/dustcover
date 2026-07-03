@@ -256,6 +256,7 @@ class LyricsView(QWidget):
         self._last_mono = None  # monotonic stamp of _last_sec, for extrapolation
         self._advancing = False  # playback running -> extrapolate + animate wipe
         self._offset = float(getattr(config, "LYRICS_OFFSET", 0.0) or 0.0)
+        self._scale = 1.0     # >1 enlarges everything (fullscreen ambient mode)
         self.accent = config.ACCENT
         # smooth karaoke wipe: repaint ~20fps, but only while synced lyrics are
         # visible AND playing (same spirit as the widget's gated progress timer)
@@ -338,15 +339,23 @@ class LyricsView(QWidget):
             self._active = a
             self.update()
 
+    def set_scale(self, s):
+        self._scale = max(1.0, float(s))
+        self.update()
+
+    def _lh(self):
+        return self.LINE_H * self._scale
+
     def _edge_fade(self, y, h):
         """Opacity multiplier (0..1) that fades a line out near the top and
         bottom edges, so lyrics don't collide with the title/artist header or
         the controls below. 1.0 through the middle."""
-        return max(0.0, min(1.0, y / self.EDGE_FADE, (h - y) / self.EDGE_FADE))
+        fade = self.EDGE_FADE * self._scale
+        return max(0.0, min(1.0, y / fade, (h - y) / fade))
 
     def _max_scroll(self):
-        content = len(self._lines) * self.LINE_H
-        return max(0.0, content - self.height() + self.LINE_H)
+        content = len(self._lines) * self._lh()
+        return max(0.0, content - self.height() + self._lh())
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -492,34 +501,36 @@ class LyricsView(QWidget):
         cy = h / 2
         eff = self._now_eff()
         act = self._active if self._active >= 0 else 0
-        maxw = w - 24
+        maxw = w - int(24 * self._scale)
+        lh = self._lh()
         self._line_bounds = []
 
         # ---- active line: wrapped and shown IN FULL (no "..." on dense rap),
         #      centred, with the karaoke wipe flowing across its rows ----
-        f_act = p.font(); f_act.setPointSize(15); f_act.setBold(True)
+        f_act = p.font(); f_act.setPointSize(int(15 * self._scale)); f_act.setBold(True)
         fm_act = QFontMetrics(f_act)
         rows = self._wrap(self._lines[act][1], fm_act, maxw)
-        act_h = len(rows) * self.LINE_H
+        act_h = len(rows) * lh
         act_top = cy - act_h / 2
         p.setFont(f_act)
         frac = self._wipe_frac(eff)
         total_w = sum(fm_act.horizontalAdvance(r) for r in rows) or 1.0
         fill = frac * total_w
         cum = 0.0
+        x0 = (w - maxw) / 2
         for r, row in enumerate(rows):
-            y = act_top + r * self.LINE_H
-            edge = self._edge_fade(y + self.LINE_H / 2, h)
-            rect = QRectF(12, y, maxw, self.LINE_H)
+            y = act_top + r * lh
+            edge = self._edge_fade(y + lh / 2, h)
+            rect = QRectF(x0, y, maxw, lh)
             rw = fm_act.horizontalAdvance(row)
-            left = 12 + (maxw - rw) / 2
+            left = x0 + (maxw - rw) / 2
             p.setPen(QColor(255, 255, 255, int(235 * edge)))
             p.drawText(rect, Qt.AlignCenter, row)
             row_fill = max(0.0, min(rw, fill - cum))
             if row_fill > 0:
                 acc = QColor(self.accent); acc.setAlpha(int(255 * edge))
                 p.save()
-                p.setClipRect(QRectF(left, y, row_fill, self.LINE_H))
+                p.setClipRect(QRectF(left, y, row_fill, lh))
                 p.setPen(acc)
                 p.drawText(rect, Qt.AlignCenter, row)
                 p.restore()
@@ -527,32 +538,35 @@ class LyricsView(QWidget):
         self._line_bounds.append((act_top, act_top + act_h, act))
 
         # ---- neighbours: single-line context above/below the active block ----
-        f_norm = p.font(); f_norm.setPointSize(12); f_norm.setBold(False)
+        f_norm = p.font(); f_norm.setPointSize(int(12 * self._scale)); f_norm.setBold(False)
         p.setFont(f_norm)
         fm_norm = QFontMetrics(f_norm)
-        GAP = 6
+        GAP = 6 * self._scale
         yb = act_top + act_h + GAP
         i = act + 1
         while i < len(self._lines) and yb < h:
             self._draw_neighbor(p, i, act, yb, w, h, fm_norm)
-            self._line_bounds.append((yb, yb + self.LINE_H, i))
-            yb += self.LINE_H; i += 1
-        ya = act_top - GAP - self.LINE_H
+            self._line_bounds.append((yb, yb + lh, i))
+            yb += lh; i += 1
+        ya = act_top - GAP - lh
         i = act - 1
-        while i >= 0 and ya + self.LINE_H > 0:
+        while i >= 0 and ya + lh > 0:
             self._draw_neighbor(p, i, act, ya, w, h, fm_norm)
-            self._line_bounds.append((ya, ya + self.LINE_H, i))
-            ya -= self.LINE_H; i -= 1
+            self._line_bounds.append((ya, ya + lh, i))
+            ya -= lh; i -= 1
 
         self._paint_countdown(p, w, cy, eff)
 
     def _draw_neighbor(self, p, i, act, y, w, h, fm):
-        edge = self._edge_fade(y + self.LINE_H / 2, h)
+        lh = self._lh()
+        edge = self._edge_fade(y + lh / 2, h)
         col = QColor(255, 255, 255)
         col.setAlpha(int(max(110, 225 - abs(i - act) * 32) * edge))
         p.setPen(col)
-        line = fm.elidedText(self._lines[i][1], Qt.ElideRight, w - 24)
-        p.drawText(QRectF(12, y, w - 24, self.LINE_H), Qt.AlignCenter, line)
+        maxw = w - int(24 * self._scale)
+        x0 = (w - maxw) / 2
+        line = fm.elidedText(self._lines[i][1], Qt.ElideRight, maxw)
+        p.drawText(QRectF(x0, y, maxw, lh), Qt.AlignCenter, line)
 
     def _paint_countdown(self, p, w, cy, eff):
         """Three draining dots during long instrumental gaps, so you know when
@@ -573,10 +587,10 @@ class LyricsView(QWidget):
         if not (0.0 < remaining <= self.DOTS_LEAD):
             return
         lit = min(3, max(1, int(remaining / self.DOTS_LEAD * 3) + 1))
-        r = 4.0
-        gap = 18.0
+        r = 4.0 * self._scale
+        gap = 18.0 * self._scale
         x0 = w / 2 - gap
-        y = cy - self.LINE_H * 1.6
+        y = cy - self._lh() * 1.6
         p.setPen(Qt.NoPen)
         for i in range(3):
             c = QColor(self.accent) if i < lit else QColor(255, 255, 255, 60)
@@ -584,20 +598,23 @@ class LyricsView(QWidget):
             p.drawEllipse(QPointF(x0 + i * gap, y), r, r)
 
     def _paint_plain(self, p, w, h):
-        f = p.font(); f.setPointSize(12); f.setBold(False); p.setFont(f)
+        f = p.font(); f.setPointSize(int(12 * self._scale)); f.setBold(False)
+        p.setFont(f)
         fm = QFontMetrics(f)
+        lh = self._lh()
+        maxw = w - int(24 * self._scale)
+        x0 = (w - maxw) / 2
         top = 12 - self._scroll
         for i, (_t, txt) in enumerate(self._lines):
-            y = top + i * self.LINE_H
-            if y < -self.LINE_H or y > h + self.LINE_H:
+            y = top + i * lh
+            if y < -lh or y > h + lh:
                 continue
-            edge = self._edge_fade(y + self.LINE_H / 2, h)
+            edge = self._edge_fade(y + lh / 2, h)
             col = QColor(235, 235, 240)
             col.setAlpha(int(255 * edge))
             p.setPen(col)
-            line = fm.elidedText(txt, Qt.ElideRight, w - 24)
-            p.drawText(QRectF(12, y, w - 24, self.LINE_H),
-                       Qt.AlignCenter, line)
+            line = fm.elidedText(txt, Qt.ElideRight, maxw)
+            p.drawText(QRectF(x0, y, maxw, lh), Qt.AlignCenter, line)
 
 
 class Card(QFrame):
@@ -684,6 +701,9 @@ class NowPlayingWidget(QWidget):
     favorite_requested = Signal(str, str)  # title, artist (request real liked state)
     cover_requested = Signal(str, str)     # title, artist (request full-res cover)
     radio_requested = Signal(str, str)     # title, artist (request track-radio mix)
+    playlists_requested = Signal()         # ask the backend to fetch the user's playlists
+    add_to_playlist_requested = Signal(str, str, str)     # title, artist, playlist_id
+    create_playlist_requested = Signal(str, str, str)     # title, artist, new name
     check_updates_requested = Signal()     # tray "Check for updates..." (loud check)
     volume_changed = Signal(float)         # 0.0-1.0, from the volume slider
     mute_toggled = Signal(bool)            # desired mute state
@@ -712,6 +732,7 @@ class NowPlayingWidget(QWidget):
         self._liked = False
         self._heart_user_owned = False  # user explicitly toggled the current track
         self._logged_in = False   # signed in to TIDAL (for likes/quality)
+        self._playlists = None    # cached [(playlist_id, name)]; None = not fetched
         self._muted = False         # current app/system mute (from volume backend)
         self._vol_updating = False  # guard: ignore slider signals during programmatic set
         self._slider_style = _ClickToSetStyle()   # keep a reference (Qt doesn't own it)
@@ -724,6 +745,7 @@ class NowPlayingWidget(QWidget):
         self._cover_bytes = None    # raw bytes of that cover (for "Save cover art")
         self._tray_icon_state = None  # throttle for the live tray icon
         self._lyrics_mode = False   # lyrics panel showing in the expanded view
+        self._ambient = None        # fullscreen "now playing" window (lazy)
         self._shuffle = False
         self._repeat = 0   # 0 none, 1 track, 2 list
 
@@ -812,6 +834,7 @@ class NowPlayingWidget(QWidget):
 
         self.c_like = self._round_btn(icons.heart_icon(SUBTLE, filled=False),
                                       self._on_heart, 28)
+        self._wire_heart_menu(self.c_like)
         self.c_prev = self._round_btn(icons.prev_icon(INK), self.prev_clicked.emit, 30)
         self.c_play = self._round_btn(icons.play_icon(ON_ACCENT),
                                       self.playpause_clicked.emit, 36, accent=True)
@@ -902,6 +925,7 @@ class NowPlayingWidget(QWidget):
 
         self.e_like = self._round_btn(icons.heart_icon(SUBTLE, filled=False),
                                       self._on_heart, 34)
+        self._wire_heart_menu(self.e_like)
         self.e_shuffle = self._round_btn(icons.shuffle_icon(SUBTLE),
                                          self.shuffle_clicked.emit, 30)
         self.e_prev = self._round_btn(icons.prev_icon(INK), self.prev_clicked.emit, 38)
@@ -974,7 +998,8 @@ class NowPlayingWidget(QWidget):
     def _set_tooltips(self):
         hk = config.HOTKEYS_ENABLED
         tips = [
-            (("c_like", "e_like"), "Like" + (" (Ctrl+Alt+L)" if hk else "")),
+            (("c_like", "e_like"), "Like" + (" (Ctrl+Alt+L)" if hk else "")
+             + "  •  right-click to add to a playlist"),
             (("c_prev", "e_prev"), "Previous" + (" (Ctrl+Alt+Left)" if hk else "")),
             (("c_play", "e_play"), "Play / Pause" + (" (Ctrl+Alt+Space)" if hk else "")),
             (("c_next", "e_next"), "Next" + (" (Ctrl+Alt+Right)" if hk else "")),
@@ -1233,6 +1258,9 @@ class NowPlayingWidget(QWidget):
         self.act_mode = QAction("Expand", self)
         self.act_mode.triggered.connect(self.toggle_mode)
         menu.addAction(self.act_mode)
+        act_ambient = QAction("Fullscreen now playing", self)
+        act_ambient.triggered.connect(self.toggle_ambient)
+        menu.addAction(act_ambient)
         menu.addSeparator()
 
         act_settings = QAction("Settings...", self)
@@ -1339,6 +1367,57 @@ class NowPlayingWidget(QWidget):
             self.like_clicked.emit(self._cur_title, self._cur_artist,
                                    self._cur_album, self._liked)
 
+    def _wire_heart_menu(self, btn):
+        btn.setContextMenuPolicy(Qt.CustomContextMenu)
+        btn.customContextMenuRequested.connect(
+            lambda pos, b=btn: self._playlist_menu(b, pos))
+
+    def _playlist_menu(self, btn, pos):
+        """Right-click the heart: add the playing track to a TIDAL playlist."""
+        if not self._logged_in:
+            self._tray_msg("Sign in to TIDAL to use playlists.", "TIDAL")
+            return
+        if not self._cur_title:
+            return
+        # Snapshot the track NOW: menu.exec runs a nested loop during which the
+        # song can advance, and we must add the track the user was looking at.
+        title, artist = self._cur_title, self._cur_artist
+        menu = QMenu(self)
+        menu.addSection("Add to playlist")
+        if self._playlists is None:
+            menu.addAction("Loading your playlists...").setEnabled(False)
+            self.playlists_requested.emit()   # not fetched yet: kick a fetch
+        elif not self._playlists:
+            menu.addAction("No editable playlists").setEnabled(False)
+        else:
+            for pid, name in self._playlists[:40]:
+                menu.addAction(name).setData(pid)
+        menu.addSeparator()
+        act_new = menu.addAction("New playlist...")
+        chosen = self._exec_menu(menu, btn.mapToGlobal(pos))
+        if chosen is None:
+            return
+        if chosen is act_new:
+            from PySide6.QtWidgets import QInputDialog
+            name, ok = QInputDialog.getText(self, "New playlist",
+                                            "Playlist name:")
+            if ok and name.strip():
+                self.create_playlist_requested.emit(title, artist, name.strip())
+        elif chosen.data():
+            self.add_to_playlist_requested.emit(title, artist, str(chosen.data()))
+
+    def _exec_menu(self, menu, gpos):   # seam: overridable in tests
+        return menu.exec(gpos)
+
+    def on_playlists(self, playlists):
+        self._playlists = list(playlists or [])
+
+    def on_playlist_result(self, ok, name):
+        from PySide6.QtGui import QCursor
+        from PySide6.QtWidgets import QToolTip
+        msg = (f'Added to "{name}"' if ok else (name or "Couldn't add to playlist"))
+        QToolTip.showText(QCursor.pos(), msg)
+
     def _refresh_heart(self):
         ic = icons.heart_icon(LIKE_COLOR if self._liked else SUBTLE, 64, self._liked)
         for b in (self.c_like, self.e_like):
@@ -1387,9 +1466,12 @@ class NowPlayingWidget(QWidget):
         self._tray_msg("Opening TIDAL sign-in in your browser...", "TIDAL")
 
     def on_login_state(self, ok, msg):
+        was = self._logged_in
         self._logged_in = bool(ok)
         if self.tray:
             self.act_signin.setVisible(not self._logged_in)
+        if self._logged_in and not was:
+            self.playlists_requested.emit()   # prefetch for the heart menu
         # Sign-in can complete while a track is already playing; re-resolve its
         # quality badge and heart now instead of waiting for the next track.
         if self._logged_in and self._cur_title:
@@ -1412,6 +1494,8 @@ class NowPlayingWidget(QWidget):
         if (title, artist) != (self._cur_title, self._cur_artist):
             return  # stale result for a track that already changed
         self.e_lyrics.set_lines(lines)
+        if self._ambient is not None:
+            self._ambient.set_lines(lines)
         tip = "Show lyrics" if lines else "No lyrics for this track"
         for b in (self.c_lyrics_btn, self.e_lyrics_btn):
             b.show()
@@ -1431,6 +1515,37 @@ class NowPlayingWidget(QWidget):
             settings.save({"lyrics_offset": self._pending_offset})
         except Exception:
             pass
+
+    # ---- fullscreen ambient mode -------------------------------------------
+    def toggle_ambient(self):
+        if self._ambient is not None and self._ambient.isVisible():
+            self._ambient.close()
+            return
+        if self._ambient is None:
+            from ambient import AmbientWindow
+            self._ambient = AmbientWindow()
+            self._ambient.lyrics.seek_requested.connect(self.seek_clicked)
+            self._ambient.lyrics.offset_changed.connect(self._on_lyrics_offset)
+            self._ambient.closed.connect(self._on_ambient_closed)
+        self._sync_ambient(full=True)
+        self._ambient.show_on(self._current_screen())
+        self._update_timer()   # keep the position tick alive for the ambient view
+
+    def _on_ambient_closed(self, *_a):
+        self._ambient = None
+        self._update_timer()
+
+    def _sync_ambient(self, full=False):
+        a = self._ambient
+        if a is None or not a.isVisible() and not full:
+            return
+        a.set_accent(self._effective_accent())
+        if full:
+            a.set_track(self._cover_src, self._cur_title, self._cur_artist)
+            a.set_lines(self.e_lyrics._lines)
+        a.set_progress(self._pos, self._dur, self._playing)
+        a.set_playing(self._playing)
+        a.set_position(self._pos)
 
     def _toggle_lyrics(self):
         self._set_lyrics_mode(not self._lyrics_mode)
@@ -1577,6 +1692,9 @@ class NowPlayingWidget(QWidget):
                 b.setEnabled(False)   # signifier while we check / if none
                 b.setToolTip("Finding lyrics...")
             self.e_lyrics.set_loading()
+            if self._ambient is not None:
+                self._ambient.set_loading()
+                self._ambient.set_track(None, title, artist)
         self._cur_title, self._cur_artist = title, artist
         self._cur_album = info.get("album") or ""
         self._refresh_heart()
@@ -1604,6 +1722,9 @@ class NowPlayingWidget(QWidget):
         self._dur = float(info.get("duration") or 0.0)
         self._anchor = time.monotonic()
         self._update_progress(self._pos)
+        if self._ambient is not None and self._ambient.isVisible():
+            self._ambient.set_progress(self._pos, self._dur, self._playing)
+            self._ambient.set_playing(self._playing)
 
         if info.get("art_changed"):
             if self._cover_hires:
@@ -1638,6 +1759,9 @@ class NowPlayingWidget(QWidget):
         else:
             self._accent_dyn = self._accent2_dyn = None
         self._apply_accent()
+        if self._ambient is not None and self._ambient.isVisible():
+            self._ambient.set_track(self._cover_src, self._cur_title, self._cur_artist)
+            self._ambient.set_accent(self._effective_accent())
 
     def on_cover_hires(self, title, artist, data):
         if (title, artist) != (self._cur_title, self._cur_artist):
@@ -1728,21 +1852,30 @@ class NowPlayingWidget(QWidget):
         self.e_cover.setPixmap(e)
 
     # ---- progress ----------------------------------------------------------
+    def _ambient_open(self):
+        return self._ambient is not None and self._ambient.isVisible()
+
     def _tick_progress(self):
-        if not self._expanded:
+        if not (self._expanded or self._ambient_open()):
             return
         if self._playing and self._dur > 0:
             est = min(self._pos + (time.monotonic() - self._anchor), self._dur)
             self._update_progress(est)
             if self._lyrics_mode:
                 self.e_lyrics.set_position(est)
+            if self._ambient_open():
+                self._ambient.set_progress(est, self._dur, self._playing)
+                self._ambient.set_position(est)
 
     def _update_timer(self):
         # The 200ms progress timer only does visible work when playing AND
-        # expanded AND on screen; keep it stopped otherwise (saves idle CPU).
+        # (expanded on screen, OR the fullscreen ambient window is open); keep
+        # it stopped otherwise (saves idle CPU).
         if not hasattr(self, "_timer"):
             return
-        if self._playing and self._expanded and self.isVisible():
+        want = self._playing and ((self._expanded and self.isVisible())
+                                  or self._ambient_open())
+        if want:
             if not self._timer.isActive():
                 self._timer.start()
         elif self._timer.isActive():
@@ -1886,6 +2019,9 @@ class NowPlayingWidget(QWidget):
         act_mode = QAction("Compact" if self._expanded else "Expand", self)
         act_mode.triggered.connect(self.toggle_mode)
         menu.addAction(act_mode)
+        act_amb = QAction("Fullscreen now playing", self)
+        act_amb.triggered.connect(self.toggle_ambient)
+        menu.addAction(act_amb)
         if self.tray:
             act_hide = QAction("Hide widget", self)
             act_hide.triggered.connect(self._hide_widget)

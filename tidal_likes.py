@@ -74,6 +74,9 @@ class TidalLiker(QObject):
     favorite_state = Signal(str, str, bool)  # (title, artist, is in collection?)
     radio_result = Signal(str, str, str)     # (title, artist, mix id or "")
     cover_ready = Signal(str, str, bytes)    # (title, artist, full-res cover bytes)
+    cover_url = Signal(str, str, str)        # (title, artist, public cover URL)
+    playlists_ready = Signal(object)         # [(playlist_id, name), ...] or []
+    playlist_result = Signal(bool, str)      # (success, playlist name / message)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -87,6 +90,7 @@ class TidalLiker(QObject):
         self._fav_complete = True  # False if the bulk fav fetch hit its page cap
         self._user_fav = {}       # id str -> bool: this session's own like/unlike
         self._fav_lock = threading.Lock()
+        self._playlists = None    # cached [(UserPlaylist, id, name)] (own, editable)
         if tidalapi is not None:
             self._try_load_token()
 
@@ -231,10 +235,98 @@ class TidalLiker(QObject):
         self._fav_ids = None
         self._fav_complete = True
         self._user_fav = {}
+        self._playlists = None
         with self._cache_lock:
             self._track_cache.clear()
             self._cover_cache.clear()
         self._qcache.clear()
+
+    # ---- playlists (add the playing track to one, or a new one) --------------
+    def request_playlists(self):
+        """Fetch the user's own (editable) playlists; emits playlists_ready."""
+        threading.Thread(target=self._playlists_worker, daemon=True).start()
+
+    def _load_playlists(self):
+        """Return cached [(UserPlaylist, id, name)] of the user's OWN playlists
+        (the ones we can add to), fetched once per session."""
+        with self._fav_lock:
+            if self._playlists is not None:
+                return self._playlists
+            out = []
+            try:
+                for pl in (self._session.user.playlists() or []):
+                    # only playlists the user owns are editable (have .add)
+                    if hasattr(pl, "add"):
+                        pid = str(getattr(pl, "id", "") or "")
+                        name = getattr(pl, "name", None) or "Untitled"
+                        if pid:
+                            out.append((pl, pid, name))
+            except Exception:
+                out = []
+            self._playlists = out
+            return out
+
+    def _playlists_worker(self):
+        if self._session is None:
+            self.playlists_ready.emit([])
+            return
+        try:
+            pls = self._load_playlists()
+            self.playlists_ready.emit([(pid, name) for _pl, pid, name in pls])
+        except Exception:
+            self.playlists_ready.emit([])
+
+    def add_to_playlist(self, title, artist, playlist_id):
+        threading.Thread(target=self._add_to_playlist_worker,
+                         args=(title, artist, playlist_id), daemon=True).start()
+
+    def _add_to_playlist_worker(self, title, artist, playlist_id):
+        if self._session is None:
+            self.playlist_result.emit(False, "Sign in to TIDAL first")
+            return
+        try:
+            tid = self._match(title, artist)
+            if tid is None:
+                self.playlist_result.emit(False, "Couldn't find this track on TIDAL")
+                return
+            target = None
+            name = ""
+            for pl, pid, nm in (self._playlists or self._load_playlists()):
+                if pid == str(playlist_id):
+                    target, name = pl, nm
+                    break
+            if target is None:
+                self.playlist_result.emit(False, "Playlist not found")
+                return
+            with self._lock:                       # serialize the write
+                target.add([str(tid)])
+            self._save_token(self._session)        # token may have refreshed
+            self.playlist_result.emit(True, name)
+        except Exception:
+            self.playlist_result.emit(False, "Couldn't add to the playlist")
+
+    def create_playlist_with(self, title, artist, name):
+        threading.Thread(target=self._create_playlist_worker,
+                         args=(title, artist, name), daemon=True).start()
+
+    def _create_playlist_worker(self, title, artist, name):
+        if self._session is None:
+            self.playlist_result.emit(False, "Sign in to TIDAL first")
+            return
+        try:
+            tid = self._match(title, artist)
+            if tid is None:
+                self.playlist_result.emit(False, "Couldn't find this track on TIDAL")
+                return
+            with self._lock:
+                pl = self._session.user.create_playlist(name, "")
+                pl.add([str(tid)])
+            if self._playlists is not None:        # keep the cache fresh
+                self._playlists.append((pl, str(getattr(pl, "id", "") or ""), name))
+            self._save_token(self._session)
+            self.playlist_result.emit(True, name)
+        except Exception:
+            self.playlist_result.emit(False, "Couldn't create the playlist")
 
     # ---- favorite state (is the current track already in the collection?) ---
     def favorite_state_request(self, title, artist):
@@ -340,6 +432,10 @@ class TidalLiker(QObject):
             if not getattr(album, "cover", None):
                 album = self._session.album(album.id)   # stub without cover UUID
             key = str(getattr(album, "id", "") or "")
+            try:
+                self.cover_url.emit(title, artist, album.image(640))  # for Discord
+            except Exception:
+                pass
             with self._cache_lock:
                 data = self._cover_cache.get(key)
             if data is None:

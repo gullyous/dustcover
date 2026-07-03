@@ -68,7 +68,25 @@ ALWAYS_ON_TOP = True
 HOTKEYS_ENABLED = True
 
 # App version, shown in Settings -> About.
-APP_VERSION = "1.4.5"
+APP_VERSION = "1.5.0"
+
+# Show what you're listening to on Discord ("Listening to TIDAL" with cover,
+# title, artist and a live progress bar). Off by default. Needs a one-time
+# Discord application id: create an app at https://discord.com/developers,
+# copy its Application ID here (and optionally upload an art asset named
+# "tidal" as the fallback icon). Without an id the feature stays inert.
+DISCORD_RPC = False
+DISCORD_CLIENT_ID = ""
+
+# Submit your plays to ListenBrainz (an open, private listening history). Off by
+# default. Paste a user token from https://listenbrainz.org/settings/ to enable.
+SCROBBLE_LISTENBRAINZ = False
+LISTENBRAINZ_TOKEN = ""
+
+# Serve a now-playing overlay for OBS at http://127.0.0.1:<port>/overlay
+# (localhost only). Off by default.
+OBS_OVERLAY = False
+OBS_OVERLAY_PORT = 8787
 
 # Check GitHub for a newer release on startup (silent), and enable the tray
 # "Check for updates..." item. The check sends your app version and IP to

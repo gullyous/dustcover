@@ -38,6 +38,12 @@ FIELDS = {
     "poll_ms": ("POLL_MS", int),
     "hotkeys_enabled": ("HOTKEYS_ENABLED", bool),
     "check_updates": ("CHECK_UPDATES", bool),
+    "discord_rpc": ("DISCORD_RPC", bool),
+    "discord_client_id": ("DISCORD_CLIENT_ID", str),
+    "scrobble_listenbrainz": ("SCROBBLE_LISTENBRAINZ", bool),
+    "listenbrainz_token": ("LISTENBRAINZ_TOKEN", str),
+    "obs_overlay": ("OBS_OVERLAY", bool),
+    "obs_overlay_port": ("OBS_OVERLAY_PORT", int),
 }
 
 
