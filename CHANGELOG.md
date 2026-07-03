@@ -5,6 +5,19 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-07-02
+
+### Added
+- **The volume slider controls the Windows system volume by default**, so it
+  moves together with your keyboard volume keys and the taskbar speaker.
+  Settings has a toggle ("Volume slider controls the Windows system volume") to
+  switch it back to controlling only the playing app's own volume (TIDAL or
+  your browser), the way it worked before.
+
+### Changed
+- System mode skips the per-app audio-session lookup entirely, so the slider is
+  even lighter than the app-scoped path.
+
 ## [1.4.3] - 2026-07-02
 
 ### Fixed
