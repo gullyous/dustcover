@@ -94,7 +94,7 @@ def main():
 
     settings.load_into_config()   # apply any saved overrides before building the UI
     app.setApplicationName("Dustcover")
-    # Brand the running process: tray, taskbar and alt-tab all show the "E"
+    # Brand the running process: tray, taskbar and alt-tab all show the record
     # mark even before the app is packaged into a .exe. (The packaged build
     # also gets it from icon.ico via the PyInstaller .spec.)
     app.setWindowIcon(icons.app_icon(config.ACCENT))

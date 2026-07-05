@@ -3,8 +3,8 @@
 
 """Generate icon.ico + icon.png for the packaged app.
 
-Draws the brand mark "E" (three linked nodes with a live pulse ring on the
-centre node, on a dark-glass tile) at every standard size and writes a proper
+Draws the brand mark (a vinyl record on a dark-glass "dust cover" tile) at
+every standard size and writes a proper
 MULTI-resolution icon.ico (16/24/32/48/64/128/256) so the .exe stays crisp in
 the taskbar, alt-tab and Explorer. Also writes a 256px icon.png.
 

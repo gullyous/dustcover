@@ -196,10 +196,42 @@ def heart_icon(color="#ffffff", size=64, filled=True):
 
 
 # ---------------------------------------------------------------------------
-# App / brand mark — "E": three linked nodes with a live pulse ring on the
-# centre node, on a dark-glass tile. Single source of truth, shared by the
-# tray/window icon (app_icon, below) and the packaged .exe icon (make_icon.py).
+# App / brand mark: a vinyl record (outer edge, label ring, spindle) on a
+# dark-glass tile. The tile stands in for the smoked "dust cover" you watch the
+# spinning record through, which is what the app is named for. Single source of
+# truth, shared by the tray/window icon (app_icon) and the .exe (make_icon.py).
 # ---------------------------------------------------------------------------
+
+def _draw_record(p, cx, cy, r, accent, detail=True):
+    """Paint a vinyl-record mark centred at (cx, cy) with outer radius r, in the
+    accent colour: a thick outer edge, an inner label ring and a spindle dot,
+    with a faint groove ring added when `detail` (larger sizes only)."""
+    p.setRenderHint(QPainter.Antialiasing, True)
+    c = QPointF(cx, cy)
+    ac = QColor(accent)
+
+    pen = QPen(ac)                       # outer disc edge
+    pen.setWidthF(max(1.4, r * 0.15))
+    p.setPen(pen)
+    p.setBrush(Qt.NoBrush)
+    p.drawEllipse(c, r, r)
+
+    if detail:                           # fine grooves clustered near the rim
+        g = QColor(accent)
+        g.setAlphaF(0.45)
+        gpen = QPen(g)
+        gpen.setWidthF(max(1.0, r * 0.05))
+        p.setPen(gpen)
+        p.drawEllipse(c, r * 0.82, r * 0.82)
+        p.drawEllipse(c, r * 0.70, r * 0.70)
+
+    p.setPen(Qt.NoPen)                   # solid label disc
+    p.setBrush(ac)
+    p.drawEllipse(c, r * 0.33, r * 0.33)
+
+    p.setBrush(ac.darker(320))           # spindle hole in the label
+    p.drawEllipse(c, max(1.0, r * 0.09), max(1.0, r * 0.09))
+
 
 def draw_app_icon(p, size, accent="#39d6e0"):
     """Paint the app mark onto an already-open QPainter `p`, filling `size`x`size`
@@ -227,48 +259,12 @@ def draw_app_icon(p, size, accent="#39d6e0"):
         p.setBrush(Qt.NoBrush)
         p.drawRoundedRect(QRectF(x0, y0, t, t), rad, rad)
 
-    # --- mark (100x100 design space, scaled into the tile) ---
+    # --- record mark, centred in the tile (the tile is the dust cover) ---
     small = size <= 32
-    ms = t * (0.84 if small else 0.64)
-    mx0 = x0 + (t - ms) / 2.0
-    my0 = y0 + (t - ms) / 2.0
-    sc = ms / 100.0
-
-    def MX(v):
-        return mx0 + v * sc
-
-    def MY(v):
-        return my0 + v * sc
-
-    ac = QColor(accent)
-
-    # pulse ring on the centre node (only legible at larger sizes)
-    if size >= 48:
-        ring = QColor(accent)
-        ring.setAlphaF(0.5)
-        pen = QPen(ring)
-        pen.setWidthF(3 * sc)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawEllipse(QPointF(MX(50), MY(42)), 14 * sc, 14 * sc)
-
-    # connectors
-    pen = QPen(ac)
-    pen.setWidthF((7 if small else 6) * sc)
-    pen.setCapStyle(Qt.RoundCap)
-    pen.setJoinStyle(Qt.RoundJoin)
-    p.setPen(pen)
-    p.drawLine(QPointF(MX(28), MY(42)), QPointF(MX(72), MY(42)))
-    p.drawLine(QPointF(MX(50), MY(42)), QPointF(MX(50), MY(66)))
-
-    # nodes
-    p.setPen(Qt.NoPen)
-    p.setBrush(ac)
-    n_r = (7.5 if small else 7) * sc
-    for vx, vy in ((28, 42), (72, 42), (50, 66)):
-        p.drawEllipse(QPointF(MX(vx), MY(vy)), n_r, n_r)
-    c_r = (10 if small else 9) * sc
-    p.drawEllipse(QPointF(MX(50), MY(42)), c_r, c_r)
+    cx = x0 + t / 2.0
+    cy = y0 + t / 2.0
+    r = t * (0.40 if small else 0.33)
+    _draw_record(p, cx, cy, r, accent, detail=size >= 44)
 
 
 def _arrow_corner(p, x, y, dx, dy, size):
@@ -343,31 +339,10 @@ def app_icon(accent="#39d6e0", size=64):
 
 
 def _draw_mark(p, size, accent, fill=0.92):
-    """Paint just the brand mark (no tile) scaled to fill the canvas, so it reads
+    """Paint just the record mark (no tile) scaled to fill the canvas, so it reads
     as large as possible in the system tray on a dark taskbar."""
-    p.setRenderHint(QPainter.Antialiasing, True)
-    # mark bounding box in the 100x100 design space is ~58 wide, centred at (50,53)
-    sc = fill * size / 58.0
-
-    def MX(v):
-        return size / 2 + (v - 50) * sc
-
-    def MY(v):
-        return size / 2 + (v - 53) * sc
-
-    ac = QColor(accent)
-    pen = QPen(ac)
-    pen.setWidthF(max(1.2, 6.5 * sc))
-    pen.setCapStyle(Qt.RoundCap)
-    pen.setJoinStyle(Qt.RoundJoin)
-    p.setPen(pen)
-    p.drawLine(QPointF(MX(28), MY(42)), QPointF(MX(72), MY(42)))
-    p.drawLine(QPointF(MX(50), MY(42)), QPointF(MX(50), MY(66)))
-    p.setPen(Qt.NoPen)
-    p.setBrush(ac)
-    for vx, vy in ((28, 42), (72, 42), (50, 66)):
-        p.drawEllipse(QPointF(MX(vx), MY(vy)), 7.5 * sc, 7.5 * sc)
-    p.drawEllipse(QPointF(MX(50), MY(42)), 10 * sc, 10 * sc)
+    _draw_record(p, size / 2.0, size / 2.0, fill * size * 0.46, accent,
+                 detail=size >= 40)
 
 
 def tray_icon(accent="#39d6e0", size=64):

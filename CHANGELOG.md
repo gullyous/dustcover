@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [1.6.1] - 2026-07-05
+
+### Changed
+- **New app icon.** The brand mark is now a vinyl record (grooves, label, and
+  spindle) sitting on the dark-glass tile, which reads as the smoked "dust
+  cover" you watch the spinning record through. It replaces the old abstract
+  node mark across the tray, taskbar, alt-tab, and the packaged executable.
+
 ## [1.6.0] - 2026-07-05
 
 ### Changed
