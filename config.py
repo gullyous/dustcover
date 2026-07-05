@@ -68,7 +68,7 @@ ALWAYS_ON_TOP = True
 HOTKEYS_ENABLED = True
 
 # App version, shown in Settings -> About.
-APP_VERSION = "1.5.4"
+APP_VERSION = "1.5.5"
 
 # Show what you're listening to on Discord ("Listening to TIDAL" with cover,
 # title, artist and a live progress bar). Off by default. Needs a one-time

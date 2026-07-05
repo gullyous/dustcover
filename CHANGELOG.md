@@ -3,6 +3,22 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [1.5.5] - 2026-07-03
+
+### Fixed
+- **The fullscreen player no longer keeps showing the last song after playback
+  stops.** Closing TIDAL (or otherwise ending the session) while the player is
+  open now clears its cover, title, artist, album and lyrics, instead of leaving
+  the previous track on screen as though it were still playing.
+- **Double-clicking the album art or the track text no longer exits the
+  fullscreen player.** Only a double-click on the empty backdrop closes it; the
+  art, title, artist, album, quality badge, lyrics, progress bar and controls
+  are all safe to double-click.
+- **The widget comes back instantly when you leave the fullscreen player**,
+  rather than briefly leaving an empty spot on screen while game mode caught up.
+- **Lower idle cost while the fullscreen player is open:** the large cover art
+  is no longer rebuilt on every playback poll when nothing about it changed.
+
 ## [1.5.4] - 2026-07-03
 
 ### Fixed
