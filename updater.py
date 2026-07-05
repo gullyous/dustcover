@@ -4,11 +4,11 @@
 """
 updater.py
 ----------
-In-app auto-update for the TIDAL Now-Playing widget.
+In-app auto-update for the Dustcover widget.
 
-Checks the official GitHub release of gullyous/Tidal-Widget, and (when running
+Checks the official GitHub release of gullyous/dustcover, and (when running
 as the packaged PyInstaller --onefile --windowed .exe) downloads the new
-TidalNowPlaying.exe, optionally verifies its SHA-256 against a SHA256SUMS.txt
+Dustcover.exe, optionally verifies its SHA-256 against a SHA256SUMS.txt
 asset published in the SAME release, swaps the running exe via a detached helper
 (the freshly-downloaded exe re-launched in --apply-update mode), and restarts.
 
@@ -64,11 +64,11 @@ import config
 # --- Fixed identity (NEVER taken from user input / config / redirects) -------
 
 OWNER = "gullyous"
-REPO = "Tidal-Widget"
+REPO = "dustcover"
 LATEST_URL = f"https://api.github.com/repos/{OWNER}/{REPO}/releases/latest"
 RELEASE_PAGE = f"https://github.com/{OWNER}/{REPO}/releases/latest"
 
-ASSET_NAME = "TidalNowPlaying.exe"
+ASSET_NAME = "Dustcover.exe"
 SUMS_NAME = "SHA256SUMS.txt"
 
 # Hosts we will accept a download from, after redirects are resolved.
@@ -78,7 +78,7 @@ ALLOWED_HOST_SUFFIXES = (
 )
 
 USER_AGENT = (
-    f"TidalNowPlaying-Updater/{getattr(config, 'APP_VERSION', '0')} "
+    f"Dustcover-Updater/{getattr(config, 'APP_VERSION', '0')} "
     f"(+https://github.com/{OWNER}/{REPO})"
 )
 
@@ -480,7 +480,7 @@ def _try_replace(src, dst, attempts=5, delay=0.5):
 
 def _apply_update(old_pid: int, target: str):
     """Runs as the new exe (currently named *.new). Swap and restart."""
-    me = current_exe_path()             # ...\TidalNowPlaying.exe.new
+    me = current_exe_path()             # ...\Dustcover.exe.new
     # Hardening: only ever swap our own canonical exe name, never an arbitrary
     # path handed to us on the command line.
     if os.path.basename(target).lower() != ASSET_NAME.lower():

@@ -1226,7 +1226,7 @@ class NowPlayingWidget(QWidget):
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
         self.tray = QSystemTrayIcon(icons.tray_icon(config.ACCENT), self)
-        self.tray.setToolTip("Tidal Now Playing")
+        self.tray.setToolTip("Dustcover")
 
         menu = QMenu()
         menu.setToolTipsVisible(True)
@@ -1349,7 +1349,7 @@ class NowPlayingWidget(QWidget):
             self.tray.setToolTip(f"{title}\n{artist}")
         else:
             self.act_track.setText("Nothing playing")
-            self.tray.setToolTip("Tidal Now Playing")
+            self.tray.setToolTip("Dustcover")
 
     def _refresh_tray_icon(self):
         """Live tray icon: cover + accent progress ring, throttled so the icon
@@ -1461,7 +1461,7 @@ class NowPlayingWidget(QWidget):
         if self._ambient is not None:
             self._ambient.set_liked(self._liked)
 
-    def _tray_msg(self, text, title="Tidal Now Playing"):
+    def _tray_msg(self, text, title="Dustcover"):
         # Desktop balloon notifications were intrusive; intentionally a no-op.
         # Feedback comes from the widget itself (heart fill, menu state).
         return

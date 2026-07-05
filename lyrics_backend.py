@@ -31,8 +31,8 @@ import config
 
 _GET = "https://lrclib.net/api/get"
 _SEARCH = "https://lrclib.net/api/search"
-_UA = (f"TidalNowPlaying/{getattr(config, 'APP_VERSION', '0')} "
-       f"(+https://github.com/gullyous/Tidal-Widget)")
+_UA = (f"Dustcover/{getattr(config, 'APP_VERSION', '0')} "
+       f"(+https://github.com/gullyous/dustcover)")
 _CTX = ssl.create_default_context()
 _TIMEOUT = 8
 

@@ -29,9 +29,9 @@ from volume_backend import VolumeController
 from widget import NowPlayingWidget
 
 # ---- single instance + CLI verbs (Stream Deck / AutoHotkey friendly) --------
-# `TidalNowPlaying.exe --cmd next` forwards a verb to the running widget over a
+# `Dustcover.exe --cmd next` forwards a verb to the running widget over a
 # local socket and exits. A bare second launch just surfaces the widget.
-CMD_SERVER_NAME = "TidalNowPlaying-cmd"
+CMD_SERVER_NAME = "Dustcover-cmd"
 CMD_VERBS = ("playpause", "next", "prev", "like", "show", "hide",
              "toggle", "expand")
 
@@ -93,7 +93,7 @@ def main():
               f"{cmd_server.errorString()}")
 
     settings.load_into_config()   # apply any saved overrides before building the UI
-    app.setApplicationName("Tidal Now Playing")
+    app.setApplicationName("Dustcover")
     # Brand the running process: tray, taskbar and alt-tab all show the "E"
     # mark even before the app is packaged into a .exe. (The packaged build
     # also gets it from icon.ico via the PyInstaller .spec.)

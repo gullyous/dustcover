@@ -61,7 +61,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='TidalNowPlaying',
+    name='Dustcover',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

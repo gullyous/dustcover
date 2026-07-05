@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-07-05
+
+### Changed
+- **The app is now called Dustcover.** Same widget, new name: it was renamed
+  from "TIDAL Now-Playing Widget" to reflect that it shows and controls
+  whatever Windows is playing (TIDAL, Spotify, a browser tab, and so on), not
+  only TIDAL. The executable is now `Dustcover.exe`, the repository moved to
+  `github.com/gullyous/dustcover` (old links redirect), and the window titles,
+  tray tooltip, and About screen carry the new name. Your saved settings and
+  TIDAL sign-in are preserved. Note: because the executable name changed,
+  update to this version by downloading `Dustcover.exe` from the release once;
+  auto-update continues normally afterward.
+
 ## [1.5.5] - 2026-07-03
 
 ### Fixed

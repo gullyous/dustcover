@@ -30,13 +30,13 @@ from PySide6.QtWidgets import (
 import config
 import settings
 
-REPO = "https://github.com/gullyous/Tidal-Widget"
+REPO = "https://github.com/gullyous/dustcover"
 
 
 def _lum(c):
     return 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
 
-_LICENSES = f"""TIDAL Now-Playing Widget v{config.APP_VERSION}
+_LICENSES = f"""Dustcover v{config.APP_VERSION}
 Copyright (C) 2026 gullyous
 
 This program is free software: you can redistribute it and/or modify it under
@@ -125,7 +125,7 @@ class SettingsDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Tidal Widget - Settings")
+        self.setWindowTitle("Dustcover - Settings")
         self.setMinimumWidth(380)
         cur = settings.current()
         self._accent = str(cur["accent"])
@@ -365,7 +365,7 @@ class SettingsDialog(QDialog):
         v = QVBoxLayout(page)
 
         title = QLabel(
-            "<span style='font-size:15px; font-weight:700;'>TIDAL Now-Playing Widget</span>"
+            "<span style='font-size:15px; font-weight:700;'>Dustcover</span>"
             f"&nbsp;&nbsp;<span style='color:#9a9aa3;'>v{config.APP_VERSION}</span>")
         desc = QLabel("A dark-glass desktop widget showing your current TIDAL track "
                       "with transport controls, seek, favorites, and a quality badge.")

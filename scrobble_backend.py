@@ -43,7 +43,7 @@ def _post(url, token, payload):
     req = urllib.request.Request(url, data=data, method="POST", headers={
         "Authorization": f"Token {token}",
         "Content-Type": "application/json",
-        "User-Agent": f"TidalNowPlaying/{getattr(config, 'APP_VERSION', '0')}",
+        "User-Agent": f"Dustcover/{getattr(config, 'APP_VERSION', '0')}",
     })
     with urllib.request.urlopen(req, timeout=10, context=_CTX) as r:
         return r.status
@@ -56,7 +56,7 @@ def validate_token(token):
         return (False, "No token")
     req = urllib.request.Request(_VALIDATE, headers={
         "Authorization": f"Token {token}",
-        "User-Agent": f"TidalNowPlaying/{getattr(config, 'APP_VERSION', '0')}"})
+        "User-Agent": f"Dustcover/{getattr(config, 'APP_VERSION', '0')}"})
     try:
         with urllib.request.urlopen(req, timeout=10, context=_CTX) as r:
             body = json.loads(r.read().decode("utf-8", "replace"))

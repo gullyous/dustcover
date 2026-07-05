@@ -1,6 +1,6 @@
 @echo off
 REM Build a standalone Windows .exe (no Python/venv needed to run the result).
-REM Output: dist\TidalNowPlaying.exe
+REM Output: dist\Dustcover.exe
 setlocal
 cd /d "%~dp0"
 
@@ -26,8 +26,8 @@ echo Generating app icon...
 "%VENV_PY%" "%~dp0make_icon.py"
 
 echo.
-echo Building TidalNowPlaying.exe (this can take a couple of minutes)...
-"%VENV_PY%" -m PyInstaller --noconfirm --clean "%~dp0TidalNowPlaying.spec"
+echo Building Dustcover.exe (this can take a couple of minutes)...
+"%VENV_PY%" -m PyInstaller --noconfirm --clean "%~dp0Dustcover.spec"
 if errorlevel 1 (
   echo.
   echo Build failed - see messages above.
@@ -38,7 +38,7 @@ if errorlevel 1 (
 echo.
 echo ============================================================
 echo  Done.  Your standalone app is:
-echo    %~dp0dist\TidalNowPlaying.exe
+echo    %~dp0dist\Dustcover.exe
 echo  Double-click it to run (TIDAL should be open and playing).
 echo ============================================================
 pause

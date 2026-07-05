@@ -34,22 +34,22 @@ jobs:
         run: python make_icon.py
 
       - name: Build executable
-        run: pyinstaller --noconfirm --clean TidalNowPlaying.spec
+        run: pyinstaller --noconfirm --clean Dustcover.spec
 
       - name: Generate SHA256SUMS.txt
         shell: pwsh
         run: |
-          $h = (Get-FileHash dist/TidalNowPlaying.exe -Algorithm SHA256).Hash.ToLower()
+          $h = (Get-FileHash dist/Dustcover.exe -Algorithm SHA256).Hash.ToLower()
           # sha256sum-compatible format: "<hex>  <name>"
-          "$h  TidalNowPlaying.exe" | Out-File -FilePath dist/SHA256SUMS.txt -Encoding ascii -NoNewline
+          "$h  Dustcover.exe" | Out-File -FilePath dist/SHA256SUMS.txt -Encoding ascii -NoNewline
           Get-Content dist/SHA256SUMS.txt
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TidalNowPlaying
+          name: Dustcover
           path: |
-            dist/TidalNowPlaying.exe
+            dist/Dustcover.exe
             dist/SHA256SUMS.txt
 
       # The release body is this version's CHANGELOG section: people who
@@ -63,9 +63,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          name: TIDAL Now-Playing Widget ${{ github.ref_name }}
+          name: Dustcover ${{ github.ref_name }}
           files: |
-            dist/TidalNowPlaying.exe
+            dist/Dustcover.exe
             dist/SHA256SUMS.txt
           generate_release_notes: true
           append_body: true

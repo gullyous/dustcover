@@ -40,7 +40,7 @@ def compose(md, tag):
         f"{section}\n\n"
         "---\n"
         "Existing installs: update from Settings > Updates (or the tray's "
-        "\"Check for updates...\"). New here? Grab `TidalNowPlaying.exe` below; "
+        "\"Check for updates...\"). New here? Grab `Dustcover.exe` below; "
         "no install needed. The build is unsigned, so SmartScreen may warn the "
         "first time (More info -> Run anyway).\n"
     )

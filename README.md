@@ -1,11 +1,14 @@
-# TIDAL Now-Playing Widget
+# Dustcover
 
 A polished "dark glass" desktop widget for Windows that shows what's currently
-playing on **TIDAL** (cover art, title, artist) with transport controls, a
-compact/expanded view, and a system-tray menu. It reads playback straight from
-Windows media controls, so seeing what's playing works the moment TIDAL plays,
-no API keys and no setup. Signing in is only needed for the optional extras
-(liking tracks and the quality badge).
+playing (cover art, title, artist) with transport controls, seeking, synced
+lyrics, a compact/expanded view, a fullscreen player, and a system-tray menu.
+It reads playback straight from Windows media controls, so seeing what's
+playing works the moment anything plays: **TIDAL**, Spotify, Apple Music, or a
+browser tab, with no API keys and no setup. Dustcover started as a TIDAL
+companion (TIDAL shipped no desktop now-playing widget), and signing in to
+TIDAL is still only needed for the optional extras (liking tracks and the
+quality badge).
 
 ![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
@@ -44,7 +47,7 @@ no API keys and no setup. Signing in is only needed for the optional extras
 - Game mode: the widget hides itself while a fullscreen app (game, video) owns its monitor, and comes back after (can be turned off)
 - Live tray icon: the tray shows the current album art with a progress ring and dims while paused (can be turned off)
 - Album art dims while playback is paused, so you can read play state at a glance
-- Single instance with CLI verbs: `TidalNowPlaying.exe --cmd next` (or `playpause`, `prev`, `like`, `show`, `hide`, `toggle`, `expand`) controls the running widget, ready for Stream Deck or AutoHotkey; a bare second launch just surfaces it
+- Single instance with CLI verbs: `Dustcover.exe --cmd next` (or `playpause`, `prev`, `like`, `show`, `hide`, `toggle`, `expand`) controls the running widget, ready for Stream Deck or AutoHotkey; a bare second launch just surfaces it
 - Quality badge showing what the track is available in on TIDAL (MAX / Hi-Res / Lossless / High, plus Atmos)
 - Adaptive controls: actions the current source doesn't support are greyed out or hidden
 - Preferences dialog (with an About + licenses tab), run-at-Windows-startup, and optional global hotkeys
@@ -74,8 +77,8 @@ one-time TIDAL sign-in (see below).
 
 ### Option A: Download the .exe (easiest)
 
-1. Download the latest `TidalNowPlaying.exe` from the
-   [Releases](https://github.com/gullyous/Tidal-Widget/releases/latest) page.
+1. Download the latest `Dustcover.exe` from the
+   [Releases](https://github.com/gullyous/dustcover/releases/latest) page.
 2. Open TIDAL and play a track.
 3. Double-click the `.exe`. The first launch takes a few seconds while it unpacks.
 
@@ -97,10 +100,10 @@ Double-click **`build.bat`**, or run:
 ```bat
 pip install -r requirements.txt pyinstaller
 python make_icon.py
-pyinstaller --noconfirm --clean TidalNowPlaying.spec
+pyinstaller --noconfirm --clean Dustcover.spec
 ```
 
-The result is `dist\TidalNowPlaying.exe`.
+The result is `dist\Dustcover.exe`.
 
 ## Usage
 
@@ -112,7 +115,7 @@ The result is `dist\TidalNowPlaying.exe`.
 - **Seek:** in expanded mode, drag the progress bar to jump to any point in the track.
 - **Volume:** a slider under the compact controls (and in the expanded card, with a mute button). By default it controls the **Windows system volume**, so it moves in lock-step with your keyboard volume keys and the taskbar speaker. In **Settings** you can switch it to control **only the playing app's volume** (TIDAL, or your browser for the web player), the way the Windows Volume Mixer's per-app slider does; in that mode it shows the effective (audible) level and follows the system master as its ceiling. It appears only while something is playing.
 - **Lyrics:** when the current track has lyrics, a lyrics button lights up (on both the compact bar and the expanded view). Tap it for a karaoke view: the active line fills with the accent color in time with the vocal, auto-scrolls, and you can click any line to seek. During a long instrumental break, three countdown dots drain down so you know when the next line lands. If the timing drifts, scroll on the panel to nudge it earlier or later (a small "sync +0.3s" badge shows the amount; middle-click resets). Tracks that only have plain (unsynced) lyrics show them as a scroll-through block. The button dims when a track has no lyrics.
-- **Remote control / Stream Deck:** the exe is single-instance and takes command verbs: `TidalNowPlaying.exe --cmd playpause` (also `next`, `prev`, `like`, `show`, `hide`, `toggle`, `expand`) controls the already-running widget and exits. Point a Stream Deck "Open" action or any launcher at it. Launching the exe again with no arguments just brings the running widget to the front.
+- **Remote control / Stream Deck:** the exe is single-instance and takes command verbs: `Dustcover.exe --cmd playpause` (also `next`, `prev`, `like`, `show`, `hide`, `toggle`, `expand`) controls the already-running widget and exits. Point a Stream Deck "Open" action or any launcher at it. Launching the exe again with no arguments just brings the running widget to the front.
 - **Shuffle / repeat:** toggle buttons appear in expanded mode when the player supports them. (TIDAL does not expose shuffle/repeat to Windows, so they stay hidden for TIDAL.)
 - **Settings:** right-click the tray icon (or the widget) and choose **Settings...** for accent (and **tint accent from album art**), opacity, refresh interval, run-at-startup, hotkeys, and update checks. An **About** tab shows the version, links, and licenses.
 - **Global hotkeys** (when enabled): Ctrl+Alt+Space play/pause, Ctrl+Alt+Left/Right prev/next, Ctrl+Alt+L like, Ctrl+Alt+H show/hide.
@@ -204,7 +207,7 @@ The widget can check for new versions on startup. This is on by default and can
 be turned off in Settings (the "Check for updates on startup" option).
 
 When the check runs, it contacts GitHub's API for this repository
-(gullyous/Tidal-Widget) over HTTPS. This sends your app version and exposes your
+(gullyous/dustcover) over HTTPS. This sends your app version and exposes your
 IP address to GitHub; no other data is collected or sent. The check runs at most
 once per launch.
 

@@ -106,7 +106,7 @@ def get_placement():
 
 # ---- run at Windows startup (per-user HKCU Run key) -----------------------
 _RUN_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
-_RUN_NAME = "TidalNowPlaying"
+_RUN_NAME = "Dustcover"
 
 
 def _startup_command():
