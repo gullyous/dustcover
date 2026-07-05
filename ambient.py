@@ -256,10 +256,14 @@ class AmbientWindow(QWidget):
         self.lyrics.set_position(sec)
 
     def set_playing(self, playing):
-        self._playing = bool(playing)
+        playing = bool(playing)
+        changed = playing != self._playing
+        self._playing = playing
         self.lyrics.set_playing(playing)
         self._set_play_icon()
-        self._refresh_art()
+        if changed:
+            self._refresh_art()   # only the play/pause dim alters the art, so
+            #                       skip the per-poll full-size cover rebuild
 
     def set_capabilities(self, can_seek, can_prev, can_next, can_play=True):
         """Transport capabilities from the backend (via the widget)."""
@@ -432,7 +436,8 @@ class AmbientWindow(QWidget):
             e.accept()
 
     def mouseDoubleClickEvent(self, e):
-        # double-click on the backdrop closes; lyrics clicks seek, never close
-        if (e.button() == Qt.LeftButton
-                and not self.lyrics.geometry().contains(e.position().toPoint())):
+        # Close only on the empty backdrop. A double-click that lands on any
+        # content (art, title/artist/album, quality, lyrics, progress, times or
+        # a control) hits a child widget and must never exit the player.
+        if e.button() == Qt.LeftButton and self.childAt(e.position().toPoint()) is None:
             self.close()

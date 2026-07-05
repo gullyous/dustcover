@@ -768,6 +768,7 @@ class NowPlayingWidget(QWidget):
         self._tray_icon_state = None  # throttle for the live tray icon
         self._lyrics_mode = False   # lyrics panel showing in the expanded view
         self._ambient = None        # fullscreen "now playing" window (lazy)
+        self._hidden_for_ambient = False  # card parked behind the ambient player
         self._shuffle = False
         self._repeat = 0   # 0 none, 1 track, 2 list
         self._quality = ""          # current quality badge text ("" = unknown)
@@ -1375,6 +1376,9 @@ class NowPlayingWidget(QWidget):
     def on_fullscreen(self, fullscreen):
         if not getattr(config, "HIDE_ON_FULLSCREEN", True):
             return
+        if self._ambient_open():
+            return   # our own fullscreen player; the card is already parked for
+            #          it (toggle_ambient), so don't let the watcher double-toggle
         if fullscreen and self.isVisible():
             self._auto_hidden = True
             self.hide()
@@ -1578,11 +1582,21 @@ class NowPlayingWidget(QWidget):
             a.btn_mute.clicked.connect(self._on_mute)
             a.closed.connect(self._on_ambient_closed)
         self._sync_ambient(full=True)
+        # The always-on-top card would float over the fullscreen player, so park
+        # it now and bring it back the instant the player closes, instead of
+        # leaving that to the game-mode watcher's ~1.5s poll (which hid the card
+        # but restored it late, flashing an empty screen after exit).
+        self._hidden_for_ambient = self.isVisible()
+        if self._hidden_for_ambient:
+            self.hide()
         self._ambient.show_on(self._current_screen())
         self._update_timer()   # keep the position tick alive for the ambient view
 
     def _on_ambient_closed(self, *_a):
         self._ambient = None
+        if self._hidden_for_ambient:
+            self._hidden_for_ambient = False
+            self._show_widget()   # restore the card immediately, no ~1.5s gap
         self._update_timer()
 
     def _sync_ambient(self, full=False):
@@ -1754,7 +1768,9 @@ class NowPlayingWidget(QWidget):
                 self._ambient.set_shuffle_repeat(self._shuffle, self._repeat,
                                                  False, False)
                 self._ambient.set_quality("")
-                self._ambient.set_playing(False)
+                self._ambient.set_track(None, "", "", "")   # stop showing the
+                self._ambient.set_lines([])                 # last track's art,
+                self._ambient.set_playing(False)            # text and lyrics
             self.e_lyrics.set_lines([])
             self.c_lyrics_btn.hide()
             self.e_lyrics_btn.hide()
