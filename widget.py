@@ -53,7 +53,7 @@ import settings
 MARGIN = 18          # transparent padding so the drop shadow has room
 RADIUS = 18          # card corner radius
 COMPACT_CARD = (360, 104)
-EXPANDED_CARD = (360, 404)
+EXPANDED_CARD = (360, 430)
 TOGGLE_D = 22        # corner expand/collapse button diameter
 CORNER_GAP = 6       # visible gap from the screen edges when locked into a corner
 

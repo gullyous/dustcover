@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.png" alt="Dustcover" width="820">
+</p>
+
 # Dustcover
 
 A polished "dark glass" desktop widget for Windows that shows what's currently

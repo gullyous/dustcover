@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [1.6.2] - 2026-07-05
+
+### Fixed
+- **The track title no longer overlaps the album art in the expanded card.**
+  With real system fonts the content was slightly taller than the fixed card
+  height, so the title crowded up against the cover. The expanded card is now
+  tall enough for the title, artist, and quality badge to sit clearly below the
+  art.
+
 ## [1.6.1] - 2026-07-05
 
 ### Changed
